@@ -1,0 +1,1 @@
+let generate_report () = "Report generated"

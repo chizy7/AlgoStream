@@ -1,0 +1,4 @@
+(library
+ (name reporting)
+ (public_name algostream.reporting)
+ (libraries cohttp-lwt-unix yojson))

@@ -1,0 +1,4 @@
+(library
+ (name risk_management)
+ (public_name algostream.risk_management)
+ (libraries cohttp-lwt-unix yojson))

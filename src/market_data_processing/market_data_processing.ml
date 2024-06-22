@@ -1,0 +1,1 @@
+let process_data data = "Data processed: " ^ data

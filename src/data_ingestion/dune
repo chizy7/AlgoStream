@@ -1,3 +1,4 @@
 (library
  (name data_ingestion)
+ (public_name algostream.data_ingestion)
  (libraries cohttp-lwt-unix yojson))

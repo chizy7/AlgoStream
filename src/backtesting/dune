@@ -1,0 +1,4 @@
+(library
+ (name backtesting)
+ (public_name algostream.backtesting)
+ (libraries cohttp-lwt-unix yojson))

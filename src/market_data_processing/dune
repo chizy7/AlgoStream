@@ -1,0 +1,4 @@
+(library
+ (name market_data_processing)
+ (public_name algostream.market_data_processing)
+ (libraries cohttp-lwt-unix yojson))

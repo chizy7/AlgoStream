@@ -1,0 +1,4 @@
+(library
+ (name strategy_execution)
+ (public_name algostream.strategy_execution)
+ (libraries cohttp-lwt-unix yojson))

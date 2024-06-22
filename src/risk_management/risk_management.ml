@@ -1,0 +1,1 @@
+let manage_risk () = "Risk managed"

@@ -1,0 +1,1 @@
+let execute_strategy () = "Strategy executed"

@@ -1,0 +1,4 @@
+(library
+ (name ui)
+ (public_name algostream.ui)
+ (libraries cohttp-lwt-unix yojson js_of_ocaml))
