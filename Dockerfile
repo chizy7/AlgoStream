@@ -34,7 +34,7 @@ COPY --chown=opam:opam . .
 RUN opam exec -- dune build --profile release bin/algostream.exe bin/keyctl.exe bin/auditctl.exe
 
 # ───────────────────────── runtime ─────────────────────────
-FROM debian:12-slim AS runtime
+FROM debian:13-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libgmp10 \
