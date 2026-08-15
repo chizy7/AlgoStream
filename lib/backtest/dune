@@ -1,0 +1,24 @@
+(library
+ (public_name algostream.backtest)
+ (name algostream_backtest)
+ (libraries
+  algostream_analytics
+  base
+  algostream_common_utils
+  algostream_domain_common
+  algostream_domain_market
+  algostream_domain_orders
+  algostream_domain_portfolio
+  algostream_domain_trades
+  algostream_infrastructure_event_bus
+  algostream_order_management
+  algostream_pairs
+  algostream_performance
+  algostream_risk_management
+  algostream_rng
+  algostream_stochastic
+  algostream_strategy
+  algostream_time_series
+  logs)
+ (flags
+  (:standard -w -69)))

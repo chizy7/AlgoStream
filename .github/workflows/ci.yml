@@ -1,0 +1,241 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+        ocaml-compiler:
+          - "5.0.x"
+          - "5.1.x"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Use OCaml ${{ matrix.ocaml-compiler }}
+      uses: ocaml/setup-ocaml@v3
+      with:
+        ocaml-compiler: ${{ matrix.ocaml-compiler }}
+        dune-cache: true
+        opam-depext: true
+        opam-depext-flags: --with-test
+        disable-sandbox: true
+
+    - name: Install dependencies
+      run: opam install . --deps-only --with-test
+
+    - name: Install dev dependencies for formatting
+      run: opam install . --deps-only --with-dev-setup
+      if: matrix.ocaml-compiler == '5.1.x' && matrix.os == 'ubuntu-latest'
+
+    - name: Build project
+      run: opam exec -- dune build
+
+    - name: Check formatting
+      run: opam exec -- dune build @fmt --profile dev
+      if: matrix.ocaml-compiler == '5.1.x' && matrix.os == 'ubuntu-latest'
+
+    - name: Run tests
+      run: opam exec -- dune runtest
+
+    - name: Install doc dependencies
+      run: opam install . --deps-only --with-doc
+      if: matrix.ocaml-compiler == '5.1.x' && matrix.os == 'ubuntu-latest'
+
+    - name: Build documentation
+      run: opam exec -- dune build @doc
+      if: matrix.ocaml-compiler == '5.1.x' && matrix.os == 'ubuntu-latest'
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Use OCaml 5.1.x
+      uses: ocaml/setup-ocaml@v3
+      with:
+        ocaml-compiler: "5.1.x"
+        dune-cache: true
+        opam-depext: true
+        disable-sandbox: true
+
+    - name: Install dev dependencies
+      run: opam install . --deps-only --with-dev-setup
+
+    - name: Check OCaml formatting
+      run: |
+        opam exec -- dune build @fmt
+        if ! git diff --exit-code; then
+          echo "Code is not properly formatted. Please run 'dune build @fmt --auto-promote' and commit the changes."
+          exit 1
+        fi
+
+    - name: Enforce single Lwt_main.run call site
+      # Lwt_engine is process-global state — running it from two Domains corrupts silently.
+      # Lwt_host owns the one permitted call site; ingestion and the HTTP API both attach
+      # fibers to it rather than starting schedulers of their own.
+      # We assert at the file granularity: only one .ml file may mention the symbol.
+      # (Trying to count call sites with regex was brittle — OCaml function application
+      # has no parens, and the host's own error messages + Log.err strings both
+      # contain the substring legitimately.)
+      run: |
+        files=$(grep -rln "Lwt_main\.run" lib bin test --include='*.ml' 2>/dev/null | sort -u)
+        expected="lib/infrastructure/lwt_host/lwt_host.ml"
+        if [ "$files" != "$expected" ]; then
+          echo "ERROR: Lwt_main.run may only appear in $expected"
+          echo "Found in:"
+          echo "$files"
+          exit 1
+        fi
+
+    - name: Enforce no wall-clock reads in the event-time layers
+      # These layers must read time only from tick.timestamp_ns (event time) so that
+      # event_replay.exe + algostream-bars produce bit-for-bit deterministic output across
+      # runs of the same fixture. If you genuinely need wall-clock time for telemetry, add
+      # it to a NEW module outside these directories.
+      run: |
+        leaked=0
+        for dir in lib/analytics lib/time_series lib/normalization lib/pairs lib/advanced_models lib/order_management lib/risk_management; do
+          if grep -rn 'Clock\.now_\|Unix\.gettimeofday' "$dir" 2>/dev/null; then
+            echo "ERROR: wall-clock leak in $dir — must use event time only"
+            leaked=1
+          else
+            echo "OK: no wall-clock leaks in $dir/"
+          fi
+        done
+        exit $leaked
+
+    - name: Enforce no clock reads in the simulation and analytics layers
+      # Stricter than the loop above in two ways. Timestamp.now is banned as well: the domain
+      # mutators now accept an optional ?ts and the backtest engine must always supply it, so a
+      # Timestamp.now () call in these layers would silently make a replay depend on when it ran.
+      # And the pattern requires a CALL shape, because these .mli files document the rule by naming
+      # the very functions they forbid — lib/strategy/strategy.mli spells all three out.
+      run: |
+        leaked=0
+        for dir in lib/rng lib/stochastic lib/strategy lib/backtest lib/performance lib/montecarlo lib/optimization; do
+          if grep -rnE 'Clock\.now_[a-z_]+ \(\)|Unix\.gettimeofday \(\)|Timestamp\.now \(\)' "$dir" 2>/dev/null; then
+            echo "ERROR: clock read in $dir — take event time as a parameter"
+            leaked=1
+          else
+            echo "OK: no clock reads in $dir/"
+          fi
+        done
+        exit $leaked
+
+    - name: Enforce the simulation layers use algostream.rng only
+      # Math_utils.FastRandom seeds only one of four state words, so nearby seeds correlate — fatal
+      # for a Monte Carlo batch seeded 0..n. Random.self_init is irreproducible by construction.
+      # Bracketed odoc references are excluded so the .mli files can explain why these are banned.
+      run: |
+        found=$(grep -rnE 'FastRandom\.[a-z_]+|self_init \(\)' \
+          lib/rng lib/stochastic lib/backtest lib/montecarlo lib/optimization lib/strategy lib/performance 2>/dev/null \
+          | grep -v '\[[^]]*FastRandom' | grep -v '\[[^]]*self_init' || true)
+        if [ -n "$found" ]; then
+          echo "ERROR: a simulation layer reached for a non-reproducible generator:"
+          echo "$found"
+          exit 1
+        fi
+        echo "OK: simulation layers use algostream.rng only"
+
+    - name: Enforce performance metrics stay consolidated
+      # The tree once carried four max-drawdown and three Sharpe implementations. The
+      # allowlist freezes the known legacy sites; a new definition anywhere else fails here.
+      run: |
+        found=$(grep -rnE 'let sharpe_ratio|let sortino|let calmar|let max_drawdown|let calculate_maximum_drawdown' lib/ 2>/dev/null \
+          | grep -v '^lib/performance/' \
+          | grep -v '^lib/domain/portfolio/portfolio.ml' \
+          | grep -v '^lib/common/utils/math_utils' \
+          | grep -v '^lib/risk_management/drawdown' \
+          | grep -v '^lib/domain/pairs/pair.ml' \
+          | grep -v '^lib/optimization/objective.ml' || true)
+        if [ -n "$found" ]; then
+          echo "ERROR: a new performance-metric definition appeared outside lib/performance:"
+          echo "$found"
+          exit 1
+        fi
+        echo "OK: metric definitions are consolidated in lib/performance/"
+
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Use OCaml 5.1.x
+      uses: ocaml/setup-ocaml@v3
+      with:
+        ocaml-compiler: "5.1.x"
+        dune-cache: true
+        opam-depext: true
+        disable-sandbox: true
+
+    - name: Install dependencies
+      run: opam install . --deps-only --with-test
+
+    - name: Build release
+      run: opam exec -- dune build --profile release
+
+    - name: Build benchmarks
+      run: opam exec -- dune build bin/benchmark.exe --profile release
+
+  security:
+    name: Security lints
+    runs-on: ubuntu-latest
+
+    # This job used to echo "Security audit placeholder" and pass. A green check that verifies
+    # nothing is worse than no check: it reads as coverage. Each lint below asserts a property the
+    # security design actually depends on, and each one would have caught a real mistake.
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Security lints
+      # A script rather than inline greps, because every construct these ban is *named in the
+      # documentation explaining why it is banned* — a plain grep fires on the comment warning you
+      # not to do the thing. scripts/security-lint.py strips OCaml comments and strings first.
+      run: python3 scripts/security-lint.py
+
+    - name: Deployment manifests validate
+      run: |
+        docker run --rm -v "$PWD/k8s:/mnt:ro" ghcr.io/yannh/kubeconform:latest \
+          -strict -summary /mnt/deployment.yaml /mnt/service.yaml
+        docker run --rm -v "$PWD/monitoring/prometheus:/mnt:ro" \
+          --entrypoint promtool prom/prometheus:v2.53.0 check rules /mnt/rules/algostream.rules.yml
+
+    - name: Shell scripts are clean
+      run: |
+        docker run --rm -v "$PWD:/mnt" koalaman/shellcheck:stable \
+          /mnt/scripts/blue-green.sh /mnt/scripts/backup.sh /mnt/scripts/restore.sh
+  docs:
+    name: Docs drift
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # The documentation pages are generated from docs/guides/*.md. Build
+    # them here so a parser regression fails the PR instead of reaching
+    # the published site. No OCaml needed, so this job stays fast.
+    - name: Generate documentation pages
+      run: python3 scripts/gen-guides.py --out "$RUNNER_TEMP/site" --quiet
+
+    - name: Verify generated pages against their markdown
+      run: python3 scripts/check-guides.py "$RUNNER_TEMP/site"

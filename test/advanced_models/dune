@@ -1,0 +1,9 @@
+(test
+ (name test_runner)
+ (libraries
+  algostream.advanced_models
+  algostream.pairs
+  algostream.analytics
+  algostream.common.utils
+  alcotest
+  unix))

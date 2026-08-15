@@ -1,0 +1,7 @@
+; Fixture generator. Not part of `dune runtest` — invoked explicitly by `make fixture` and by the
+; worked example in docs/guides/backtesting.md, so that example can be reproduced without a network
+; connection or a recorded exchange session.
+
+(executable
+ (name gen_fixture)
+ (libraries algostream_infrastructure_event_bus))

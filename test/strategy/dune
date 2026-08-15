@@ -1,0 +1,9 @@
+(test
+ (name test_runner)
+ (libraries
+  algostream.strategy
+  algostream.pairs
+  algostream.normalization
+  algostream.domain.orders
+  algostream.domain.portfolio
+  alcotest))

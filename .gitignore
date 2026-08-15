@@ -1,0 +1,233 @@
+# OCaml/Dune build artifacts
+_build/
+*.install
+*.opam.locked
+dune-project.backup
+
+# OCaml compiled files
+*.cmo
+*.cmi
+*.cma
+*.cmx
+*.cmxa
+*.a
+*.o
+*.so
+*.exe
+*.native
+*.byte
+*.opt
+*.bc
+*.annot
+*.cmt
+*.cmti
+*.spot
+*.spit
+
+# OPAM
+_opam/
+*.opam.template
+
+# IDE and Editor files
+.idea/
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+.merlin
+.ocamlinit
+.utoprc
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.tmp
+*.temp
+
+# Environment and configuration
+.env
+.env.local
+.env.development
+.env.production
+config/local.json
+config/secrets.json
+*.secret
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/local/
+data/cache/
+
+# Market data (can be large)
+data/historical/*.csv
+data/historical/*.parquet
+data/real_time/*.bin
+data/backups/
+
+# Performance and profiling data
+*.prof
+perf.data*
+callgrind.out.*
+massif.out.*
+*.trace
+trace.ctf
+gmon.out
+bench_results*.json
+
+# Test artifacts
+test_results/
+coverage/
+*.coverage
+htmlcov/
+
+# Temporary files
+tmp/
+temp/
+*.bak
+*.backup
+
+# Documentation generated files
+docs/_build/
+docs/api/generated/
+*.pdf
+*.aux
+*.out
+
+# Docker
+.dockerignore.bak
+docker-compose.override.yml
+
+# Kubernetes secrets
+k8s/secrets/
+
+# `make stack-up` generates a keystore and a Prometheus scrape token here. keys.json holds only
+# SHA-256 hashes, not the keys themselves, but it is still an inventory of who has access — and a
+# path that is easy to commit by accident is a path that eventually is.
+secrets/
+*.kubeconfig
+
+# Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+*.tfvars
+.terraform.lock.hcl
+
+# Monitoring and metrics
+monitoring/data/
+prometheus/data/
+grafana/data/
+
+# SSL certificates and keys
+*.pem
+*.key
+*.crt
+*.p12
+ssl/
+
+# API keys and secrets
+api_keys.json
+exchange_credentials.json
+*.credentials
+
+# Compiled JavaScript (from js_of_ocaml)
+*.js.map
+_js/
+js_build/
+
+# Package managers
+node_modules/
+package-lock.json
+yarn.lock
+
+# Python (if using Python tools)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# R (if using R for analysis)
+.RData
+.Rhistory
+.Rproj.user/
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+
+# Large binary files
+*.bin
+*.dat
+*.dump
+
+# Backup files
+*.orig
+*.rej
+
+# Lock files
+*.lock
+
+# Archive files
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Exchange-specific data
+exchanges/binance/cache/
+exchanges/coinbase/cache/
+exchanges/*/secrets.json
+
+# Benchmarking results
+benchmarks/results/
+performance_results/
+
+# Machine learning models (if added later)
+models/trained/
+*.model
+*.pkl
+*.joblib
+
+# Deployment artifacts
+deploy/staging/
+deploy/production/secrets/
+helm/values-production.yaml
+helm/values-staging.yaml
+
+# Local development overrides
+docker-compose.local.yml
+local_config/
+
+# Assembled GitHub Pages preview (make site-build)
+_site/
+
+# Editor configuration. Kept local rather than committed: it pins an SDK path
+# and a local opam switch, neither of which ports to another machine.
+.vscode/
+
+# macOS/iCloud sync-conflict copies ('foo 2.ml'). These break dune mid-build:
+# it tries to compile them as a module named 'Foo 2', which is not a valid name.
+# The leading space matters — a bare *[0-9].ml would also swallow garch11.ml.
+* [0-9].ml
+* [0-9].mli
+* [0-9].js
+* [0-9].html
+* [0-9].css

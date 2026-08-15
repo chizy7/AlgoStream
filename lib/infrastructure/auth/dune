@@ -1,0 +1,4 @@
+(library
+ (public_name algostream.infrastructure.auth)
+ (name algostream_infrastructure_auth)
+ (libraries digestif.c logs mirage-crypto-rng.unix unix yojson))

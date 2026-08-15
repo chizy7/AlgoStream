@@ -1,0 +1,69 @@
+version = 0.27.0
+
+# Profile settings
+profile = default
+
+# Line length and wrapping
+margin = 100
+wrap-comments = true
+wrap-fun-args = true
+
+# Indentation
+indent-after-in = 2
+max-indent = 2
+
+# Spacing and alignment
+space-around-arrays = true
+space-around-lists = true
+space-around-records = true
+space-around-variants = true
+
+# Function and type formatting
+break-fun-decl = wrap
+break-fun-sig = wrap
+function-indent = 2
+function-indent-nested = never
+type-decl = sparse
+
+# Pattern matching
+cases-exp-indent = 2
+cases-matching-exp-indent = normal
+
+# Module and signature formatting
+module-item-spacing = sparse
+
+# String and documentation formatting
+break-string-literals = auto
+doc-comments = before
+doc-comments-tag-only = default
+
+# Sequence and control flow
+sequence-style = separator
+if-then-else = compact
+
+# Record and variant formatting
+break-struct = natural
+field-space = loose
+
+# Comments
+comment-check = true
+parse-docstrings = true
+
+# OCaml version compatibility
+ocaml-version = 4.14
+
+# Specific formatting for financial/trading code
+let-binding-spacing = sparse
+break-infix = wrap
+
+# Disable some overly aggressive formatting for readability
+break-before-in = auto
+leading-nested-match-parens = true
+
+# Performance-critical code formatting
+parens-tuple = always
+parens-tuple-patterns = multi-line-only
+
+# Keep mathematical expressions readable
+break-separators = after
+indicate-nested-or-patterns = unsafe-no

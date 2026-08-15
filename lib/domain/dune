@@ -1,0 +1,13 @@
+(library
+ (public_name algostream.domain)
+ (name algostream_domain)
+ (libraries
+  algostream_domain_common
+  algostream_domain_market
+  algostream_domain_orders
+  algostream_domain_trades
+  algostream_domain_portfolio
+  algostream_domain_pairs
+  base
+  stdio
+  unix))

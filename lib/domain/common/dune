@@ -1,0 +1,4 @@
+(library
+ (public_name algostream.domain.common)
+ (name algostream_domain_common)
+ (libraries base stdio unix))

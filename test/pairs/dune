@@ -1,0 +1,10 @@
+(test
+ (name test_runner)
+ (libraries
+  algostream.pairs
+  algostream.analytics
+  algostream.normalization
+  algostream.time_series
+  algostream.infrastructure.event_bus
+  alcotest
+  unix))

@@ -1,0 +1,7 @@
+(library
+ (public_name algostream.data_ingestion.binance)
+ (name algostream_data_ingestion_binance)
+ (libraries
+  algostream_data_ingestion
+  algostream_infrastructure_event_bus
+  yojson))

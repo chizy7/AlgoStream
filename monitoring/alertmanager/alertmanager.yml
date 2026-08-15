@@ -1,0 +1,44 @@
+# Alertmanager routing for AlgoStream.
+#
+# Receivers are deliberately left as no-op webhooks. Filling in a real Slack or PagerDuty URL here
+# would mean either committing a secret or committing a placeholder that looks configured and is
+# not — and a monitoring stack that silently drops alerts is worse than one that obviously has not
+# been set up. Point `url` at your own endpoint, or set the environment variables and use
+# `--config.expand-env`.
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default
+  group_by: ['alertname', 'severity']
+  # Enough to coalesce a burst from one cause without delaying the first notification noticeably.
+  group_wait: 30s
+  group_interval: 5m
+  # Critical alerts here mean dropped market data or a dead feed. Re-notify often enough that one
+  # missed message is not the end of it.
+  repeat_interval: 4h
+  routes:
+    - matchers:
+        - severity = critical
+      receiver: critical
+      repeat_interval: 1h
+
+inhibit_rules:
+  # A process that is down will also stop reporting events; do not page twice for one cause.
+  - source_matchers:
+      - alertname = AlgoStreamDown
+    target_matchers:
+      - alertname = AlgoStreamFeedStalled
+    equal: ['instance']
+
+receivers:
+  - name: default
+    webhook_configs:
+      - url: http://127.0.0.1:5001/alerts
+        send_resolved: true
+
+  - name: critical
+    webhook_configs:
+      - url: http://127.0.0.1:5001/alerts/critical
+        send_resolved: true

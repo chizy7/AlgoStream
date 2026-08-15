@@ -1,0 +1,9 @@
+(test
+ (name test_runner)
+ (libraries
+  algostream.optimization
+  algostream.montecarlo
+  algostream.performance
+  algostream.stochastic
+  algostream.rng
+  alcotest))

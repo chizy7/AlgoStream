@@ -1,0 +1,79 @@
+# The Service is the blue/green switch: its selector names exactly one slot, and promoting a deploy
+# means changing that one label. scripts/blue-green.sh does it with `kubectl patch`.
+apiVersion: v1
+kind: Service
+metadata:
+  name: algostream
+  labels: { app: algostream }
+spec:
+  type: ClusterIP
+  selector:
+    app: algostream
+    slot: blue
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+# A stable per-slot Service, so the script can health-check the *inactive* slot before promoting it.
+# Without this there is no way to reach green while blue is still serving.
+apiVersion: v1
+kind: Service
+metadata:
+  name: algostream-blue
+  labels: { app: algostream, slot: blue }
+spec:
+  type: ClusterIP
+  selector: { app: algostream, slot: blue }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: algostream-green
+  labels: { app: algostream, slot: green }
+spec:
+  type: ClusterIP
+  selector: { app: algostream, slot: green }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: algostream-audit
+spec:
+  # ReadWriteOnce is a real constraint on blue/green, not an oversight: both slots mount this claim,
+  # so on a single-node cluster the handover works, but across nodes green cannot start until blue
+  # releases the volume. Either pin both slots to one node, use a ReadWriteMany class, or accept a
+  # brief gap. Documented rather than papered over — see docs/guides/deployment.md.
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests: { storage: 10Gi }
+---
+# The Secret is a TEMPLATE. It carries no key material and is not meant to be applied as-is.
+# Generate a keystore and create the Secret from it:
+#
+#   algostream-keyctl add --file keys.json --label k8s --scopes read,control
+#   kubectl create secret generic algostream-keys --from-file=keys.json
+#
+# Committing a real key here would put a credential in git history, where it stays after deletion.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: algostream-keys
+type: Opaque
+stringData:
+  keys.json: |
+    {"version": 1, "keys": []}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: algostream
+spec:
+  # With replicas: 1 per slot, minAvailable: 1 means a voluntary eviction (a node drain) cannot take
+  # the active slot down without a deploy first standing the other one up. That is the intended
+  # behaviour: the drain blocks rather than the feed dropping.
+  minAvailable: 1
+  selector:
+    matchLabels: { app: algostream }

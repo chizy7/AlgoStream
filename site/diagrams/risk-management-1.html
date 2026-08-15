@@ -1,0 +1,64 @@
+<!-- Replaces the `flowchart LR` at docs/guides/risk_management.md:95. -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Correlation breakdown</span>
+    <span>4 statuses</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 1020 300" role="img"
+         aria-label="Correlation updates feed a slow baseline EWMA and a fast current EWMA. Their absolute difference, plus a sign-flip test on the current value, decide a status of Stable, Weakening, Broken down or Sign flipped.">
+      <defs>
+        <marker id="ah-rm1" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <rect class="d-node-a" x="16" y="122" width="160" height="52" rx="2"/>
+      <text class="d-title" x="32" y="145">correlation</text>
+      <text class="d-title" x="32" y="162">updates</text>
+
+      <rect class="d-node" x="240" y="40" width="170" height="50" rx="2"/>
+      <text class="d-title" x="256" y="62">baseline EWMA</text>
+      <text class="d-sub"   x="256" y="79">slow</text>
+
+      <rect class="d-node" x="240" y="206" width="170" height="50" rx="2"/>
+      <text class="d-title" x="256" y="228">current EWMA</text>
+      <text class="d-sub"   x="256" y="245">fast</text>
+
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M176,140 C 205,140 210,65 234,65"/>
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M176,158 C 205,158 210,231 234,231"/>
+
+      <rect class="d-node" x="470" y="40" width="200" height="50" rx="2"/>
+      <text class="d-title" x="486" y="71">diff = |base − curr|</text>
+
+      <rect class="d-node" x="470" y="196" width="200" height="68" rx="2"/>
+      <text class="d-title" x="486" y="220">sign(base) ≠ sign(curr)</text>
+      <text class="d-title" x="486" y="240">AND |curr| &gt; threshold</text>
+
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M410,65  L464,65"/>
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M410,222 C 435,222 440,65 464,65"/>
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M410,240 L464,240"/>
+
+      <polygon class="d-node-a" points="770,110 828,150 770,190 712,150"/>
+      <text class="d-title" x="770" y="155" text-anchor="middle">Status</text>
+
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M670,65  C 700,65  710,130 726,138"/>
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M670,230 C 700,230 710,170 726,162"/>
+
+      <rect class="d-node" x="876" y="26" width="132" height="38" rx="2"/>
+      <text class="d-title" x="890" y="50">Stable</text>
+      <rect class="d-node" x="876" y="86" width="132" height="38" rx="2"/>
+      <text class="d-title" x="890" y="110">Weakening</text>
+      <rect class="d-node" x="876" y="176" width="132" height="38" rx="2"/>
+      <text class="d-title" x="890" y="200">Broken_down</text>
+      <rect class="d-node" x="876" y="236" width="132" height="38" rx="2"/>
+      <text class="d-title" x="890" y="260">Sign_flipped</text>
+
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M828,144 C 850,144 852,45  870,45"/>
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M828,148 C 850,148 852,105 870,105"/>
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M828,152 C 850,152 852,195 870,195"/>
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M828,156 C 850,156 852,255 870,255"/>
+    </svg>
+  </div>
+</div>

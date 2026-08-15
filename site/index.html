@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>AlgoStream — statistical arbitrage research platform</title>
+  <meta name="description" content="OCaml 5.x multicore. Lock-free event bus, 0.15 ms p99 at 50k ev/s, 427k events/sec ingestion. Open-source statistical arbitrage research platform. Paper trading only — no venue connectivity.">
+  <meta name="theme-color" content="#0A0A0B">
+  <link rel="canonical" href="https://chizy7.github.io/AlgoStream/">
+  <meta property="og:title" content="AlgoStream">
+  <meta property="og:description" content="High-frequency trading infrastructure in OCaml 5.x. Sub-millisecond by design.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://chizy7.github.io/AlgoStream/">
+
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+
+  <link rel="stylesheet" href="./assets/algostream.css">
+
+  <style>
+    /* ───── hero — landing page only ──────────────────────────────── */
+    .hero {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      gap: 56px;
+      align-items: center;
+      padding: 28px 0 18px;
+    }
+    .hero-text  { animation: rise 0.75s cubic-bezier(.2,.8,.2,1) 0.18s both; }
+    .hero-panel { animation: rise 0.75s cubic-bezier(.2,.8,.2,1) 0.36s both; }
+
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 14px;
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--amber);
+      margin: 0 0 22px;
+    }
+    .eyebrow::before {
+      content: ""; width: 28px; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--amber));
+    }
+
+    h1 {
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: clamp(56px, 9.6vw, 132px);
+      line-height: 0.86;
+      letter-spacing: -0.05em;
+      margin: 0 0 28px;
+      color: var(--cream);
+      text-shadow: 0 0 32px rgba(255,162,26,0.06);
+    }
+    h1 .row { display: block; }
+    h1 .stream { color: var(--amber); }
+    h1 .caret {
+      display: inline-block;
+      width: 0.5em; height: 0.78em;
+      background: var(--amber);
+      vertical-align: -0.04em;
+      margin-left: 0.06em;
+      box-shadow: 0 0 12px rgba(255,162,26,0.55);
+      animation: blink 1.05s steps(2) infinite;
+    }
+    @keyframes blink { to { opacity: 0; } }
+
+    .tagline {
+      max-width: 50ch;
+      font-size: 16px;
+      line-height: 1.55;
+      color: var(--cream);
+      margin: 0;
+      letter-spacing: -0.005em;
+    }
+    .tagline .accent { color: var(--amber); }
+    .tagline .quiet  { color: var(--muted); }
+
+    .annotations {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: repeat(2, max-content);
+      gap: 10px 36px;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .annotations span { display: inline-flex; align-items: center; gap: 10px; }
+    .annotations span::before {
+      content: "";
+      width: 6px; height: 6px;
+      border-top: 1px solid var(--amber);
+      border-right: 1px solid var(--amber);
+      transform: rotate(45deg);
+    }
+
+    @media (max-width: 980px) {
+      .hero { grid-template-columns: 1fr; gap: 36px; }
+    }
+    @media (max-width: 720px) {
+      .annotations { grid-template-columns: max-content; }
+      h1 { font-size: clamp(48px, 14vw, 84px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      h1 .caret { animation: none; opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="canvas"  aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"   aria-hidden="true"></div>
+
+  <main class="shell">
+
+    <header class="statusbar">
+      <div class="group">
+        <span class="mark">ALGOSTREAM</span>
+        <span class="sep">/</span>
+        <span>v0.1.0</span>
+        <span class="sep">/</span>
+        <span>MIT</span>
+      </div>
+      <div class="group">
+        <span>OCaml 5.x · multicore · lock-free</span>
+        <span class="sep">/</span>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="hero-text">
+        <p class="eyebrow">Open-source quantitative infrastructure</p>
+        <h1>
+          <span class="row">algo</span>
+          <span class="row"><span class="stream">stream</span><span class="caret" aria-hidden="true"></span></span>
+        </h1>
+        <p class="tagline">
+          Research infrastructure for
+          <span class="accent">statistical arbitrage</span>.
+          Event-driven, lock-free, written in OCaml 5.x.
+          <span class="quiet">Paper trading only — there is no venue connectivity anywhere in the
+          project, so every fill is simulated against live quotes. Built to measure latency in
+          nanoseconds and refuse to make any of them implicit.</span>
+        </p>
+        <div class="annotations">
+          <span>4-band priority bus</span>
+          <span>Domain-based dispatch</span>
+          <span>bin_prot replay log</span>
+          <span>Binance + Coinbase WS</span>
+        </div>
+      </div>
+
+      <aside class="hero-panel">
+        <div class="panel">
+          <span class="br-tr" aria-hidden="true"></span>
+          <span class="br-bl" aria-hidden="true"></span>
+
+          <div class="panel-head">
+            <span>Measured</span>
+            <span class="seq">apple silicon · release</span>
+          </div>
+
+          <div class="metrics stagger">
+            <div class="metric">
+              <p class="label">Event-bus latency</p>
+              <p class="value">0.15<span class="unit">ms</span></p>
+              <p class="note">p99 publish-to-handler at 50k ev/s offered load · 0.07 ms p50</p>
+            </div>
+            <div class="metric">
+              <p class="label">Ingestion throughput</p>
+              <p class="value">427<span class="unit">k ev/s</span></p>
+              <p class="note">Binance · Apple Silicon · release profile</p>
+            </div>
+            <div class="metric">
+              <p class="label">SLA target</p>
+              <p class="value">50<span class="unit">k ev/s</span></p>
+              <p class="note">met at 8.5× headroom on parsed-and-published</p>
+            </div>
+            <div class="metric">
+              <p class="label">Foundation</p>
+              <p class="value">5.x<span class="unit"> stdlib</span></p>
+              <p class="note">Atomic · Domain · zero-copy · bin_prot</p>
+            </div>
+          </div>
+
+          <div class="panel-foot">
+            <span>continuous benchmark</span>
+            <span>customSmallerIsBetter</span>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <div>
+      <div class="ctas">
+        <a class="btn btn-primary" href="./dev/bench/">
+          <span>View benchmarks</span>
+          <svg class="arrow" width="18" height="10" viewBox="0 0 18 10" fill="none" aria-hidden="true">
+            <path d="M1 5h15m0 0L11 1m5 4l-5 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/>
+          </svg>
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/chizy7/AlgoStream" rel="noopener">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M8 0C3.58 0 0 3.58 0 8a8 8 0 0 0 5.47 7.59c.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+          <span>Source</span>
+        </a>
+        <a class="btn btn-ghost" href="./guides/">
+          <span>Documentation</span>
+        </a>
+        <a class="btn btn-ghost" href="./dashboard/">
+          <span>Dashboard demo</span>
+        </a>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">benchmark reference · apple silicon · release</span>
+│ ingestion  427k ev/s binance parse
+│ latency    0.07ms p50 · 0.15ms p99 at 50k ev/s
+└─ paper trading · no venue connectivity</pre>
+
+
+      <div class="meta-right">
+        <strong>github.io</strong> / algostream<br>
+        benchmarks · <a href="./dev/bench/">dev/bench</a>
+      </div>
+    </footer>
+  </main>
+</body>
+</html>

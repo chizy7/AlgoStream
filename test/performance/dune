@@ -1,0 +1,51 @@
+; Standalone perf binaries. Excluded from `dune runtest` so the unit-test
+; suite stays fast; invoked explicitly by .github/workflows/benchmark.yml or
+; via `dune exec test/performance/event_bus_latency.exe -- --json out.json`.
+
+(executables
+ (names
+  telemetry_throughput
+  event_bus_latency
+  event_bus_paced_latency
+  event_bus_throughput
+  ingestion_throughput
+  ingestion_alloc
+  analytics_throughput
+  bar_builder_throughput
+  compress_roundtrip
+  pairs_throughput
+  advanced_models_throughput
+  order_management_throughput
+  risk_management_throughput
+  rng_throughput
+  backtest_throughput
+  montecarlo_throughput
+  metrics_throughput
+  order_path_latency)
+ (libraries
+  algostream.telemetry
+  algostream_advanced_models
+  algostream_analytics
+  algostream_backtest
+  algostream_common_utils
+  algostream_data_ingestion
+  algostream_data_ingestion_binance
+  algostream_data_ingestion_coinbase
+  algostream_domain_common
+  algostream_domain_market
+  algostream_domain_orders
+  algostream_domain_portfolio
+  algostream_infrastructure_event_bus
+  algostream_montecarlo
+  algostream_normalization
+  algostream_optimization
+  algostream_order_management
+  algostream_pairs
+  algostream_performance
+  algostream_risk_management
+  algostream_rng
+  algostream_stochastic
+  algostream_strategy
+  algostream_time_series
+  base
+  unix))

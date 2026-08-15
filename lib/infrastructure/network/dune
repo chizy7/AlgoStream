@@ -1,0 +1,23 @@
+(library
+ (public_name algostream.infrastructure.network)
+ (name algostream_infrastructure_network)
+ (libraries
+  algostream_domain_trades
+  algostream_infrastructure_auth
+  algostream_infrastructure_persistence
+  algostream_infrastructure_lwt_host
+  algostream_runtime
+  algostream_strategy
+  algostream_telemetry
+  cohttp
+  cohttp-lwt
+  cohttp-lwt-unix
+  conduit-lwt-unix
+  ipaddr
+  logs
+  lwt
+  lwt.unix
+  uri
+  yojson)
+ (flags
+  (:standard -w -69)))

@@ -1,0 +1,54 @@
+<!-- Replaces the `flowchart LR` at docs/guides/data_ingestion.md:22 -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Runtime topology</span>
+    <span>2 domains</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 820 292" role="img"
+         aria-label="Three Lwt fibers in the ingestion domain publish into a four-band priority queue in the bus dispatcher domain, which feeds a dispatcher loop and then subscribers.">
+      <defs>
+        <marker id="ah-di1" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <rect class="d-group" x="8" y="26" width="286" height="250" rx="2"/>
+      <text class="d-glabel" x="20" y="18">Ingestion Domain</text>
+
+      <rect class="d-node" x="28" y="44" width="246" height="54" rx="2"/>
+      <text class="d-sub"   x="44" y="66">Lwt fiber</text>
+      <text class="d-title" x="44" y="85">Binance WS frame loop</text>
+
+      <rect class="d-node" x="28" y="112" width="246" height="54" rx="2"/>
+      <text class="d-sub"   x="44" y="134">Lwt fiber</text>
+      <text class="d-title" x="44" y="153">Coinbase WS frame loop</text>
+
+      <rect class="d-node" x="28" y="180" width="246" height="54" rx="2"/>
+      <text class="d-sub"   x="44" y="202">Lwt fiber</text>
+      <text class="d-title" x="44" y="221">1 Hz Heartbeat</text>
+
+      <rect class="d-group" x="526" y="26" width="286" height="250" rx="2"/>
+      <text class="d-glabel" x="538" y="18">Bus Dispatcher Domain</text>
+
+      <rect class="d-node-a" x="546" y="44" width="246" height="54" rx="2"/>
+      <text class="d-sub"   x="562" y="66">Priority queue</text>
+      <text class="d-title" x="562" y="85">4 lock-free RingBuffers</text>
+
+      <rect class="d-node" x="546" y="126" width="246" height="44" rx="2"/>
+      <text class="d-title" x="562" y="153">Dispatcher loop</text>
+
+      <rect class="d-node" x="546" y="198" width="246" height="44" rx="2"/>
+      <text class="d-title" x="562" y="225">Subscribers</text>
+
+      <text class="d-elabel" x="410" y="34" text-anchor="middle">try_publish · Atomic-only</text>
+      <path class="d-edge" marker-end="url(#ah-di1)" d="M274,71  C 390,71 440,71 540,71"/>
+      <path class="d-edge" marker-end="url(#ah-di1)" d="M274,139 C 390,139 440,71 540,71"/>
+      <path class="d-edge" marker-end="url(#ah-di1)" d="M274,207 C 390,207 440,71 540,71"/>
+
+      <path class="d-edge" marker-end="url(#ah-di1)" d="M669,98 L669,120"/>
+      <path class="d-edge" marker-end="url(#ah-di1)" d="M669,170 L669,192"/>
+    </svg>
+  </div>
+</div>

@@ -1,0 +1,6 @@
+(library
+ (public_name algostream.infrastructure.lwt_host)
+ (name algostream_infrastructure_lwt_host)
+ (libraries algostream_common_utils logs logs.threaded lwt lwt.unix)
+ (flags
+  (:standard -w -69)))

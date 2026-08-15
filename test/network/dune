@@ -1,0 +1,9 @@
+(test
+ (name test_runner)
+ (libraries
+  algostream.infrastructure.network
+  algostream.infrastructure.lwt_host
+  algostream.infrastructure.auth
+  alcotest
+  yojson
+  unix))

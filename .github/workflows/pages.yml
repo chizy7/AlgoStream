@@ -1,0 +1,149 @@
+name: Pages
+
+# Publishes site/ to the gh-pages branch, which GitHub Pages serves from
+# its root. Before this workflow existed, site/index.html reached
+# production only by being copied onto gh-pages by hand.
+#
+# The one hard invariant: dev/bench/data.js is written by benchmark.yml
+# and must never be touched here. Copies are therefore explicit per path,
+# and a verification step fails the run if that file shows as modified.
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'site/**'
+      - 'docs/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Shared with benchmark.yml — both commit to gh-pages, so they queue
+# instead of racing. Never cancel: a dropped run just skips a publish.
+concurrency:
+  group: gh-pages-push
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish site to gh-pages
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout main
+      uses: actions/checkout@v4
+
+    - name: Checkout gh-pages
+      uses: actions/checkout@v4
+      with:
+        ref: gh-pages
+        path: out
+
+    # odoc needs a toolchain, which this workflow did not previously have. The cost is real (a few
+    # minutes of opam) and it buys the one thing README's "API Reference" link needs to stop being
+    # dead: an actual published API tree. Not marked continue-on-error — a silent failure here puts
+    # the link straight back where it was.
+    - name: Set up OCaml
+      uses: ocaml/setup-ocaml@v3
+      with:
+        ocaml-compiler: 5.1
+
+    - name: Build the API documentation
+      run: |
+        set -euo pipefail
+        # The project's own dependencies, not just odoc. Installing odoc alone leaves logs, yojson,
+        # lwt and the rest absent, and `dune build @doc` then fails with "Library ... not found"
+        # for every library in the tree — which reads like an odoc problem and is not one.
+        # --with-doc pulls odoc, which dune adds to the generated opam file automatically.
+        opam install . --deps-only --with-doc --yes
+        opam exec -- dune build @doc
+        mkdir -p "$RUNNER_TEMP/odoc"
+        cp -r _build/default/_doc/_html/. "$RUNNER_TEMP/odoc/"
+
+    - name: Assemble the published tree
+      run: |
+        set -euo pipefail
+        mkdir -p out/assets out/guides out/dev/bench
+
+        # assets/ is owned entirely by site/, so mirroring it (deletes
+        # included) is safe and keeps the tree tidy.
+        rsync -a --delete site/assets/ out/assets/
+
+        # guides/ is generated from docs/guides/*.md. Build into a temp
+        # tree first, then mirror with --delete so a guide that was
+        # removed from the repo loses its published page too.
+        python3 scripts/gen-guides.py --out "$RUNNER_TEMP/gen" --quiet
+        python3 scripts/check-guides.py "$RUNNER_TEMP/gen"
+        rsync -a --delete "$RUNNER_TEMP/gen/guides/" out/guides/
+
+        cp site/index.html out/index.html
+
+        # The dashboard, as a static demo. It probes /api/health, finds nothing on Pages, and
+        # renders site/dashboard/demo.json — a snapshot recorded from a real replay run — behind a
+        # banner saying so. The live version needs a running daemon; see `make dash`.
+        mkdir -p out/dashboard
+        rsync -a --delete site/dashboard/ out/dashboard/
+
+        # dev/bench/ is shared: the dashboard page and its script are
+        # ours, data.js belongs to benchmark.yml. Excluding data.js and
+        # omitting --delete means anything the action puts there survives,
+        # while every file we add under site/bench/ ships automatically.
+        rsync -a --exclude 'data.js' site/bench/ out/dev/bench/
+
+        # odoc output. CI has always built @doc and thrown the result away; publishing it
+        # is what makes README's "API Reference" link resolve, and it costs one rsync.
+        if [ -d "$RUNNER_TEMP/odoc" ]; then
+          mkdir -p out/api
+          rsync -a --delete "$RUNNER_TEMP/odoc/" out/api/
+        fi
+
+        # docs/architecture/ is in the repo but was never published.
+        mkdir -p out/architecture
+        rsync -a --delete docs/architecture/ out/architecture/
+
+        # Skip Jekyll: the site is plain HTML and needs no preprocessing.
+        touch out/.nojekyll
+
+    - name: Assert benchmark data is untouched
+      working-directory: out
+      run: |
+        set -euo pipefail
+        if git status --porcelain -- dev/bench/data.js | grep -q .; then
+          echo "::error::pages.yml modified dev/bench/data.js, which belongs to benchmark.yml"
+          git status --porcelain -- dev/bench/data.js
+          exit 1
+        fi
+        echo "dev/bench/data.js unchanged"
+
+    - name: Commit and push
+      working-directory: out
+      env:
+        SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+        if [ -z "$(git status --porcelain)" ]; then
+          echo "gh-pages already matches site/; nothing to publish"
+          exit 0
+        fi
+
+        git config user.name  "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add -A
+        git status --short
+        git commit -m "site: publish from ${SHA:0:7}"
+
+        # benchmark.yml pushes to the same branch. The concurrency group
+        # should prevent overlap, but rebase-and-retry costs nothing.
+        for attempt in 1 2 3; do
+          if git push origin gh-pages; then
+            echo "published on attempt $attempt"
+            exit 0
+          fi
+          echo "push rejected on attempt $attempt; rebasing onto latest gh-pages"
+          git pull --rebase origin gh-pages
+        done
+
+        echo "::error::could not push to gh-pages after 3 attempts"
+        exit 1

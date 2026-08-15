@@ -1,0 +1,9 @@
+(test
+ (name test_runner)
+ (libraries
+  algostream.data_ingestion
+  algostream.data_ingestion.binance
+  algostream.data_ingestion.coinbase
+  algostream.common.config
+  algostream.infrastructure.event_bus
+  alcotest))

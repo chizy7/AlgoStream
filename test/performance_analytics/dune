@@ -1,0 +1,11 @@
+(test
+ (name test_runner)
+ (libraries
+  algostream.performance
+  algostream.risk_management
+  algostream.domain.portfolio
+  algostream.analytics
+  algostream.pairs
+  algostream.rng
+  algostream.stochastic
+  alcotest))

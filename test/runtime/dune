@@ -1,0 +1,11 @@
+(test
+ (name test_runner)
+ (libraries
+  algostream.runtime
+  algostream.backtest
+  algostream.strategy
+  algostream.order_management
+  algostream.domain.orders
+  algostream.infrastructure.event_bus
+  alcotest
+  unix))

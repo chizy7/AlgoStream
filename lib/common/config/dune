@@ -1,0 +1,4 @@
+(library
+ (public_name algostream.common.config)
+ (name algostream_common_config)
+ (libraries yojson))

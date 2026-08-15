@@ -1,0 +1,135 @@
+# Alert rules for AlgoStream.
+#
+# These are derived from the conditions lib/telemetry/alert.ml already evaluates in-process, so the
+# two agree rather than drifting into two different opinions about what "unhealthy" means. Where a
+# threshold appears in both, it is the same number for the same reason, and the comment says which
+# in-process rule it mirrors.
+#
+# The one thing to keep in mind while reading these: latency is measured as `now - event.timestamp`,
+# so it is only meaningful on a live source. A replayed log reports the age of the log and would
+# trip every latency rule on every event. The daemon disables in-process latency alerting when
+# replaying; these rules cannot know that, so do not point Prometheus at a replay run and believe
+# the result.
+
+groups:
+  - name: algostream.liveness
+    rules:
+      - alert: AlgoStreamDown
+        expr: up{job="algostream"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AlgoStream is not responding to scrapes"
+          description: >
+            The exporter has been unreachable for a minute. Either the daemon is down or the
+            scrape credential was revoked — check `algostream-keyctl list` before assuming the
+            former, since a revoked key produces exactly this symptom.
+
+      - alert: AlgoStreamUnhealthy
+        # Telemetry.Health.overall, as served by /api/health.
+        expr: algostream_health_state > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AlgoStream reports a degraded or failed health check"
+
+  - name: algostream.latency
+    rules:
+      - alert: AlgoStreamLatencySLABreach
+        # Mirrors the 5ms SLA in Event_bus.create's default sla_ns.
+        #
+        # Note this is the p99 at whatever load the system is actually seeing, which is the figure
+        # the 5ms target is about. It is NOT comparable to the saturated queueing benchmark, whose
+        # numbers run to double-digit milliseconds by construction.
+        expr: algostream_latency_p99_ns > 5000000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 event latency above the 5ms SLA for five minutes"
+          description: "p99 is {{ $value | humanize }}ns."
+
+      - alert: AlgoStreamSLAViolationRate
+        expr: >
+          rate(algostream_latency_sla_violations[5m])
+            / clamp_min(rate(algostream_latency_count[5m]), 1) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 1% of events are breaching the latency SLA"
+
+  - name: algostream.flow
+    rules:
+      - alert: AlgoStreamEventsDropped
+        # Any sustained drop means the bus is shedding load: a ring filled and try_publish failed.
+        expr: rate(algostream_bus_dropped[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The event bus is dropping events"
+          description: >
+            A band's ring buffer is full, so publishes are being discarded. Check whether a
+            subscriber's drain loop has stalled — handlers run inline on the dispatcher Domain, so
+            one slow handler backs up every other subscriber.
+
+      - alert: AlgoStreamCriticalDropped
+        # Critical-band drops are data gaps and circuit-breaker events. Losing these loses exactly
+        # the signal the counter exists to protect.
+        # The exchange is embedded in the metric NAME (algostream_ingestion_binance_critical_drops)
+        # rather than carried as a label, which is a Prometheus modelling wart on our side. It bites
+        # here: increase() strips __name__, so the two per-exchange series collapse to identical
+        # labelsets and the query dies with "vector cannot contain metrics with the same labelset"
+        # before sum() ever runs.
+        #
+        # label_replace lifts the exchange back out of the name into a real label, so the series stay
+        # distinct through increase() — which matters, because increase() compensates for counter
+        # resets per series and summing first would blur that.
+        expr: >
+          sum(
+            increase(
+              label_replace(
+                {__name__=~"algostream_ingestion_.+_critical_drops"},
+                "exchange", "$1", "__name__", "algostream_ingestion_(.+)_critical_drops"
+              )[10m:1m]
+            )
+          ) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical-priority events were dropped"
+
+      - alert: AlgoStreamHandlerErrors
+        expr: increase(algostream_bus_handler_errors[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "A bus subscriber raised"
+          description: >
+            Handler exceptions are caught so one bad subscriber cannot take the dispatcher down,
+            which also means a permanently broken subscriber fails silently. This is how you find out.
+
+      - alert: AlgoStreamFeedStalled
+        expr: algostream_bus_events_per_sec == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No events for three minutes"
+          description: >
+            Market data has stopped. On a crypto feed this is always wrong — these markets do not
+            close.
+
+  - name: algostream.resources
+    rules:
+      - alert: AlgoStreamMemoryHigh
+        # The stated budget is <1GB for core engine operations.
+        expr: algostream_heap_bytes > 1073741824
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Heap above the 1GB budget"

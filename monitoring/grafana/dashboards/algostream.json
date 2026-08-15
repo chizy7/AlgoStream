@@ -1,0 +1,447 @@
+{
+  "uid": "algostream",
+  "title": "AlgoStream",
+  "description": "Paper-trading telemetry. Latency figures are meaningful only on a live feed; see the latency panel description.",
+  "tags": [
+    "algostream"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Health",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "algostream_health_state",
+          "legendFormat": "state",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "description": "0 ok, 1 degraded, 2 failed. Mirrors /api/health."
+    },
+    {
+      "id": 2,
+      "title": "Active alerts",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "algostream_alerts_active",
+          "legendFormat": "alerts",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Events/sec",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "algostream_bus_events_per_sec",
+          "legendFormat": "ev/s",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Uptime",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "algostream_uptime_s",
+          "legendFormat": "uptime",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Event latency percentiles",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "algostream_latency_p50_ns",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "algostream_latency_p90_ns",
+          "legendFormat": "p90",
+          "refId": "B"
+        },
+        {
+          "expr": "algostream_latency_p99_ns",
+          "legendFormat": "p99",
+          "refId": "C"
+        },
+        {
+          "expr": "algostream_latency_sla_ns",
+          "legendFormat": "5ms SLA",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ns"
+        },
+        "overrides": []
+      },
+      "description": "Latency is now - event.timestamp, so this is only meaningful on a LIVE source. A replay reports the age of the log and will sit above the SLA permanently."
+    },
+    {
+      "id": 6,
+      "title": "SLA violations",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "rate(algostream_latency_sla_violations[5m])",
+          "legendFormat": "violations/s",
+          "refId": "A"
+        },
+        {
+          "expr": "algostream_latency_sla_violation_pct",
+          "legendFormat": "violation %",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "Bus throughput",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "rate(algostream_bus_published[1m])",
+          "legendFormat": "published/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(algostream_bus_dispatched[1m])",
+          "legendFormat": "dispatched/s",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "title": "Drops by band",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "rate(algostream_bus_dropped_critical[5m])",
+          "legendFormat": "critical",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(algostream_bus_dropped_high[5m])",
+          "legendFormat": "high",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(algostream_bus_dropped_normal[5m])",
+          "legendFormat": "normal",
+          "refId": "C"
+        },
+        {
+          "expr": "rate(algostream_bus_dropped_low[5m])",
+          "legendFormat": "low",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "description": "Any sustained non-zero here means a ring filled and publishes were discarded."
+    },
+    {
+      "id": 9,
+      "title": "Queue depth by band",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "algostream_bus_depth_critical",
+          "legendFormat": "critical",
+          "refId": "A"
+        },
+        {
+          "expr": "algostream_bus_depth_high",
+          "legendFormat": "high",
+          "refId": "B"
+        },
+        {
+          "expr": "algostream_bus_depth_normal",
+          "legendFormat": "normal",
+          "refId": "C"
+        },
+        {
+          "expr": "algostream_bus_depth_low",
+          "legendFormat": "low",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 10,
+      "title": "Data quality",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "{__name__=~\"algostream_ingestion_.+_sequence_gaps\"}",
+          "legendFormat": "{{__name__}}",
+          "refId": "A"
+        },
+        {
+          "expr": "{__name__=~\"algostream_ingestion_.+_stale_ticks\"}",
+          "legendFormat": "{{__name__}}",
+          "refId": "B"
+        },
+        {
+          "expr": "{__name__=~\"algostream_ingestion_.+_crossed_books\"}",
+          "legendFormat": "{{__name__}}",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 11,
+      "title": "Processor throughput",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "rate(algostream_analytics_processed[1m])",
+          "legendFormat": "analytics",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(algostream_pairs_processed[1m])",
+          "legendFormat": "pairs",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(algostream_time_series_observed[1m])",
+          "legendFormat": "time series",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 12,
+      "title": "Runtime (paper)",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "algostream_runtime_total_nav",
+          "legendFormat": "NAV",
+          "refId": "A"
+        },
+        {
+          "expr": "algostream_runtime_running_instances",
+          "legendFormat": "running",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "description": "Paper trading. There is no venue connectivity anywhere in this project, so every figure here is simulated against live quotes."
+    },
+    {
+      "id": 13,
+      "title": "Heap",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "algostream_heap_bytes",
+          "legendFormat": "heap",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "description": "Stated budget is 1GB for core engine operations."
+    }
+  ]
+}

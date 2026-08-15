@@ -1,0 +1,58 @@
+name: Bug report
+description: Something behaves differently from what the docs or tests claim
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        AlgoStream is paper trading only — there is no venue connectivity anywhere
+        in the project. If you are reporting something about placing real orders,
+        that code does not exist here.
+
+        For security vulnerabilities, do **not** open an issue. Follow
+        [SECURITY.md](../blob/main/SECURITY.md) instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you observe, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: |
+        The exact commands. A failing test case is the most useful form.
+      placeholder: |
+        eval $(opam env --switch=5.0.0 --set-switch)
+        dune exec bin/backtest.exe -- --config ...
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: ocaml-version
+    attributes:
+      label: OCaml version
+      description: Output of `ocaml -version`. The project needs 5.x — `Domain` is used throughout.
+      placeholder: "5.1.1"
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: "macOS 15.6 arm64 / Ubuntu 24.04 x86_64"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Build errors, test failures, or log lines. Redact anything sensitive.
+      render: shell

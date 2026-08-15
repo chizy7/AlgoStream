@@ -1,0 +1,191 @@
+# AlgoStream Deployment, blue and green.
+#
+# VERIFICATION STATUS: applied to a single-node kind cluster (v0.32, Kubernetes v1.34) and observed
+# working — the pod reaches Ready through its own /api/health probes, the Service serves it, and
+# scripts/blue-green.sh promotes and rolls back without dropping traffic.
+#
+# That run found three defects that dry-run validation cannot reach, because none of them are
+# schema errors:
+#   1. the container args used --flag=value, which the daemon's parser did not accept;
+#   2. fsGroup makes a Secret volume mode 0440 and root-owned, which the keystore's permission
+#      check refused, so the daemon would not start in any pod;
+#   3. --rollback flipped the Service to a slot that a completed promotion had scaled to zero,
+#      producing an outage instead of preventing one.
+#   4. livenessProbe pointed at /api/health, which aggregates every subsystem. One unreachable
+#      exchange takes it to 503 permanently once the circuit breaker opens, so Kubernetes would
+#      have killed the pod ~90s into any feed outage and CrashLooped it on a dependency no restart
+#      can fix. Liveness now uses /api/live.
+# All four are fixed. `kubectl --dry-run=client` and `kubeconform` passed the manifests throughout.
+#
+# STILL NOT VALIDATED: everything that needs more than one node. The audit PVC is ReadWriteOnce, so
+# a blue/green flip that lands the two slots on different nodes cannot mount it from both — the
+# promotion would block on the new pod being unable to attach. On one node this never arises. The
+# resource figures below are reasoned from the benchmarks, not measured under production load, and
+# no ingress, TLS termination or NetworkPolicy was exercised.
+#
+# Two Deployments differing only in the `slot` label. The Service selects one of them; scripts/
+# blue-green.sh flips it. See service.yaml.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: algostream-blue
+  labels: { app: algostream, slot: blue }
+spec:
+  # Deliberately 1. The daemon is not horizontally scalable as written: each instance would open its
+  # own exchange connections and run its own copy of the strategy, so two replicas means double
+  # subscriptions and two independent paper portfolios rather than shared load. Blue/green gives
+  # availability across a *deploy*; it does not make this a clustered system.
+  replicas: 1
+  selector:
+    matchLabels: { app: algostream, slot: blue }
+  template:
+    metadata:
+      labels: { app: algostream, slot: blue }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8080"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: algostream
+          image: algostream:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - --http-host=0.0.0.0
+            - --http-port=8080
+            - --static=/app/site
+            - --auth-keys=/etc/algostream/keys.json
+            - --audit-dir=/var/lib/algostream/audit
+            # A pod's loopback is unreachable from outside its network namespace, so the daemon must
+            # bind 0.0.0.0 — exactly the case check_bind refuses by default. TLS is terminated at
+            # the ingress; see docs/guides/security.md.
+            - --insecure-plaintext-bind
+            - --gc-tune
+          ports:
+            - { name: http, containerPort: 8080 }
+          # requests == limits, which is what "resource reservations" means here: it puts the pod in
+          # the Guaranteed QoS class, so the kubelet will not evict it under node pressure ahead of
+          # burstable neighbours, and the CPU is not subject to CFS throttling mid-tick.
+          resources:
+            requests: { cpu: "2", memory: 2Gi }
+            limits:   { cpu: "2", memory: 2Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: keys,  mountPath: /etc/algostream, readOnly: true }
+            - { name: audit, mountPath: /var/lib/algostream/audit }
+            - { name: tmp,   mountPath: /tmp }
+          # Both /api/health and /api/live are public, so probes need no credential. /api/health
+          # answers 503 when a subsystem has failed, which is what makes it a readiness gate.
+          startupProbe:
+            httpGet: { path: /api/health, port: http }
+            failureThreshold: 12
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          # Liveness is /api/live, NOT /api/health. /api/health aggregates every subsystem, so an
+          # unreachable exchange takes it to 503 and keeps it there once the circuit breaker opens
+          # — which would have Kubernetes kill this pod ~90s after a feed outage and CrashLoop it
+          # on a dependency no restart can fix. /api/live answers only "is the process wedged".
+          livenessProbe:
+            httpGet: { path: /api/live, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+      # The daemon traps SIGTERM and shuts the runtime, processors and bus down in order; give it
+      # room to finish rather than having the audit log cut mid-write.
+      terminationGracePeriodSeconds: 45
+      volumes:
+        - name: keys
+          secret: { secretName: algostream-keys, defaultMode: 0400 }
+        - name: audit
+          persistentVolumeClaim: { claimName: algostream-audit }
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: algostream-green
+  labels: { app: algostream, slot: green }
+spec:
+  # Scaled to zero until a deploy promotes it. blue-green.sh scales this up, waits for readiness,
+  # flips the Service, then scales the old slot down.
+  replicas: 0
+  selector:
+    matchLabels: { app: algostream, slot: green }
+  template:
+    metadata:
+      labels: { app: algostream, slot: green }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8080"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: algostream
+          image: algostream:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - --http-host=0.0.0.0
+            - --http-port=8080
+            - --static=/app/site
+            - --auth-keys=/etc/algostream/keys.json
+            - --audit-dir=/var/lib/algostream/audit
+            - --insecure-plaintext-bind
+            - --gc-tune
+          ports:
+            - { name: http, containerPort: 8080 }
+          resources:
+            requests: { cpu: "2", memory: 2Gi }
+            limits:   { cpu: "2", memory: 2Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: keys,  mountPath: /etc/algostream, readOnly: true }
+            - { name: audit, mountPath: /var/lib/algostream/audit }
+            - { name: tmp,   mountPath: /tmp }
+          startupProbe:
+            httpGet: { path: /api/health, port: http }
+            failureThreshold: 12
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          # Liveness is /api/live, NOT /api/health. /api/health aggregates every subsystem, so an
+          # unreachable exchange takes it to 503 and keeps it there once the circuit breaker opens
+          # — which would have Kubernetes kill this pod ~90s after a feed outage and CrashLoop it
+          # on a dependency no restart can fix. /api/live answers only "is the process wedged".
+          livenessProbe:
+            httpGet: { path: /api/live, port: http }
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+      terminationGracePeriodSeconds: 45
+      volumes:
+        - name: keys
+          secret: { secretName: algostream-keys, defaultMode: 0400 }
+        - name: audit
+          persistentVolumeClaim: { claimName: algostream-audit }
+        - name: tmp
+          emptyDir: {}

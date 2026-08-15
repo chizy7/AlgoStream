@@ -1,0 +1,103 @@
+(executable
+ (name algostream)
+ (public_name algostream)
+ (libraries
+  algostream_analytics
+  algostream_common_config
+  algostream_common_utils
+  algostream_data_ingestion
+  algostream_data_ingestion_binance
+  algostream_data_ingestion_coinbase
+  algostream_infrastructure_auth
+  algostream_infrastructure_event_bus
+  algostream_infrastructure_lwt_host
+  algostream_infrastructure_network
+  algostream_infrastructure_persistence
+  algostream_normalization
+  algostream_order_management
+  algostream_pairs
+  algostream_reporting
+  algostream_runtime
+  algostream_strategy
+  algostream_telemetry
+  algostream_time_series
+  logs
+  unix))
+
+(executable
+ (name benchmark)
+ (public_name algostream-benchmark)
+ (libraries algostream_common_utils base unix))
+
+(executable
+ (name test_domain)
+ (public_name test_domain)
+ (libraries
+  algostream_domain_common
+  algostream_domain_market
+  base
+  stdio
+  unix))
+
+(executable
+ (name comprehensive_test)
+ (public_name comprehensive_test)
+ (flags
+  (:standard -w -21))
+ (libraries
+  algostream_domain_common
+  algostream_domain_market
+  algostream_domain_orders
+  base
+  stdio
+  unix))
+
+(executable
+ (name event_replay)
+ (public_name algostream-event-replay)
+ (libraries algostream_common_utils algostream_infrastructure_event_bus))
+
+(executable
+ (name ingest)
+ (public_name algostream-ingest)
+ (libraries
+  algostream_common_config
+  algostream_data_ingestion
+  algostream_data_ingestion_binance
+  algostream_data_ingestion_coinbase
+  algostream_infrastructure_event_bus
+  logs
+  logs.fmt
+  unix))
+
+(executable
+ (name bars)
+ (public_name algostream-bars)
+ (libraries algostream_infrastructure_event_bus algostream_time_series))
+
+(executable
+ (name backtest)
+ (public_name algostream-backtest)
+ (libraries
+  algostream_backtest
+  algostream_domain_market
+  algostream_montecarlo
+  algostream_normalization
+  algostream_order_management
+  algostream_pairs
+  algostream_performance
+  algostream_risk_management
+  algostream_strategy))
+
+(executable
+ (name keyctl)
+ (public_name algostream-keyctl)
+ (libraries algostream_infrastructure_auth unix))
+
+; Deliberately does not link the daemon or any of its libraries. Independent readback is what makes
+; a verification result worth anything.
+
+(executable
+ (name auditctl)
+ (public_name algostream-auditctl)
+ (libraries algostream_infrastructure_persistence unix))

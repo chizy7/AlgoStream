@@ -1,0 +1,16 @@
+(test
+ (name test_runner)
+ (libraries
+  algostream.montecarlo
+  algostream.backtest
+  algostream.strategy
+  algostream.domain.orders
+  algostream.order_management
+  algostream.risk_management
+  algostream.domain.market
+  algostream.advanced_models
+  algostream.analytics
+  algostream.performance
+  algostream.rng
+  algostream.stochastic
+  alcotest))

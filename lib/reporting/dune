@@ -1,0 +1,12 @@
+(library
+ (public_name algostream.reporting)
+ (name algostream_reporting)
+ (libraries
+  algostream_domain_trades
+  algostream_performance
+  algostream_risk_management
+  algostream_runtime
+  algostream_strategy
+  yojson)
+ (flags
+  (:standard -w -69)))

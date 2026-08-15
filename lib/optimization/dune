@@ -1,0 +1,14 @@
+(library
+ (public_name algostream.optimization)
+ (name algostream_optimization)
+ (libraries
+  algostream_advanced_models
+  algostream_backtest
+  algostream_montecarlo
+  algostream_performance
+  algostream_rng
+  algostream_stochastic
+  algostream_strategy
+  logs)
+ (flags
+  (:standard -w -69)))

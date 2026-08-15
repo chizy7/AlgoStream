@@ -1,0 +1,25 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: algostream-dev
+    container_name: algostream-dev
+    working_dir: /workspace
+    user: opam
+    volumes:
+      - ./:/workspace
+      - opam-cache:/home/opam/.opam
+      - dune-cache:/home/opam/.cache/dune
+    cap_add:
+      - SYS_ADMIN  # required for perf_event_open
+      - PERFMON    # finer-grained perf cap on Linux 5.8+
+    security_opt:
+      - seccomp:unconfined  # valgrind + perf need broader syscall set
+    tty: true
+    stdin_open: true
+    command: tail -f /dev/null
+
+volumes:
+  opam-cache:
+  dune-cache:

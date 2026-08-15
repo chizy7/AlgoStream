@@ -1,0 +1,15 @@
+(library
+ (public_name algostream.infrastructure.event_bus)
+ (name algostream_infrastructure_event_bus)
+ (libraries
+  algostream_common_utils
+  base
+  bin_prot
+  memtrace
+  stdio
+  threads.posix
+  unix)
+ (flags
+  (:standard -w -69))
+ (preprocess
+  (pps ppx_jane)))

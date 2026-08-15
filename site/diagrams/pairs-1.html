@@ -1,0 +1,48 @@
+<!-- Replaces the `flowchart LR` at docs/guides/pairs.md:14.
+     Same processor topology as time-series-1.html and analytics-1.html. -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Processor topology</span>
+    <span>3 domains</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 900 262" role="img"
+         aria-label="The bus dispatcher domain feeds a shim subscriber into the pairs domain's drain loop, which maintains per-pair state, published to strategy domains by an atomic set.">
+      <defs>
+        <marker id="ah-pr1" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <rect class="d-group" x="8" y="44" width="200" height="200" rx="2"/>
+      <text class="d-glabel" x="20" y="36">Bus Dispatcher Domain</text>
+      <rect class="d-node" x="24" y="112" width="168" height="48" rx="2"/>
+      <text class="d-title" x="40" y="141">Dispatcher loop</text>
+
+      <rect class="d-group" x="328" y="44" width="270" height="200" rx="2"/>
+      <text class="d-glabel" x="340" y="36">Pairs Domain</text>
+      <rect class="d-node" x="344" y="66" width="238" height="42" rx="2"/>
+      <text class="d-title" x="360" y="92">Drain loop</text>
+      <rect class="d-node-a" x="344" y="132" width="238" height="94" rx="2"/>
+      <text class="d-sub"   x="360" y="156">Per-pair state</text>
+      <text class="d-title" x="360" y="174">hedge · spread · corr</text>
+      <text class="d-title" x="360" y="191">classifier · bar buffers</text>
+      <text class="d-title" x="360" y="208">cached ADF / EG / half-life</text>
+      <path class="d-edge" marker-end="url(#ah-pr1)" d="M463,108 L463,126"/>
+
+      <rect class="d-group" x="698" y="44" width="194" height="200" rx="2"/>
+      <text class="d-glabel" x="710" y="36">Strategy Domains</text>
+      <rect class="d-node" x="714" y="112" width="162" height="48" rx="2"/>
+      <text class="d-title" x="730" y="135">Processor.snapshot</text>
+      <text class="d-sub"   x="730" y="151">~pair</text>
+
+      <text class="d-elabel" x="268" y="12" text-anchor="middle">shim subscriber</text>
+      <text class="d-elabel" x="268" y="24" text-anchor="middle">typed parse · symbol-mem · SPSC</text>
+      <path class="d-edge" marker-end="url(#ah-pr1)" d="M192,136 C 250,136 260,88 338,88"/>
+
+      <text class="d-elabel" x="648" y="252" text-anchor="middle">Atomic.set Snapshot.t</text>
+      <path class="d-edge" marker-end="url(#ah-pr1)" d="M582,180 C 640,180 650,136 708,136"/>
+    </svg>
+  </div>
+</div>

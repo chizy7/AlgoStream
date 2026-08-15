@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a capability or a change in approach
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        AlgoStream is paper trading only — there is no venue connectivity anywhere
+        in the project. Proposals that assume live order placement are out of scope.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What can't you do today? Describe the situation, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: |
+        If it touches the hot path (event bus, ingestion, fill engine), say what
+        you expect the latency or throughput cost to be.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - event bus / infrastructure
+        - data ingestion
+        - analytics / pairs / advanced models
+        - strategy / backtest
+        - order management / risk
+        - runtime / telemetry / reporting
+        - docs
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

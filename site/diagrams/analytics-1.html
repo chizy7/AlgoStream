@@ -1,0 +1,61 @@
+<!-- Replaces the `flowchart LR` at docs/guides/analytics.md:9.
+     Same processor topology as time-series-1.html and pairs-1.html, with
+     the ingestion fibers shown explicitly as the upstream stage. -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Processor topology</span>
+    <span>4 domains</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 1040 262" role="img"
+         aria-label="Binance and Coinbase fibers publish to the bus dispatcher domain, which feeds a shim subscriber into the analytics domain's drain loop and per-symbol state, published to strategy domains by an atomic set.">
+      <defs>
+        <marker id="ah-an1" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <rect class="d-group" x="8" y="44" width="150" height="200" rx="2"/>
+      <text class="d-glabel" x="20" y="36">Ingestion Domain</text>
+      <rect class="d-node" x="22" y="86" width="122" height="42" rx="2"/>
+      <text class="d-title" x="36" y="112">Binance fiber</text>
+      <rect class="d-node" x="22" y="158" width="122" height="42" rx="2"/>
+      <text class="d-title" x="36" y="184">Coinbase fiber</text>
+
+      <rect class="d-group" x="268" y="44" width="150" height="200" rx="2"/>
+      <text class="d-glabel" x="280" y="36">Bus Dispatcher</text>
+      <rect class="d-node" x="282" y="120" width="122" height="46" rx="2"/>
+      <text class="d-title" x="296" y="141">Dispatcher</text>
+      <text class="d-title" x="296" y="157">loop</text>
+
+      <rect class="d-group" x="528" y="44" width="230" height="200" rx="2"/>
+      <text class="d-glabel" x="540" y="36">Analytics Domain</text>
+      <rect class="d-node" x="542" y="66" width="202" height="42" rx="2"/>
+      <text class="d-title" x="556" y="92">Drain loop</text>
+      <rect class="d-node-a" x="542" y="132" width="202" height="94" rx="2"/>
+      <text class="d-sub"   x="556" y="156">Per-symbol state</text>
+      <text class="d-title" x="556" y="174">filters</text>
+      <text class="d-title" x="556" y="191">rolling stats</text>
+      <text class="d-title" x="556" y="208">regime</text>
+      <path class="d-edge" marker-end="url(#ah-an1)" d="M643,108 L643,126"/>
+
+      <rect class="d-group" x="868" y="44" width="164" height="200" rx="2"/>
+      <text class="d-glabel" x="880" y="36">Strategy Domains</text>
+      <rect class="d-node" x="882" y="120" width="136" height="46" rx="2"/>
+      <text class="d-title" x="896" y="141">Processor</text>
+      <text class="d-sub"   x="896" y="157">.snapshot ~symbol</text>
+
+      <text class="d-elabel" x="213" y="26" text-anchor="middle">try_publish</text>
+      <path class="d-edge" marker-end="url(#ah-an1)" d="M144,107 C 190,107 200,143 276,143"/>
+      <path class="d-edge" marker-end="url(#ah-an1)" d="M144,179 C 190,179 200,143 276,143"/>
+
+      <text class="d-elabel" x="473" y="12" text-anchor="middle">shim subscriber</text>
+      <text class="d-elabel" x="473" y="24" text-anchor="middle">Sanity + SPSC enqueue</text>
+      <path class="d-edge" marker-end="url(#ah-an1)" d="M404,143 C 460,143 470,88 536,88"/>
+
+      <text class="d-elabel" x="813" y="252" text-anchor="middle">Atomic.set Snapshot.t</text>
+      <path class="d-edge" marker-end="url(#ah-an1)" d="M744,180 C 800,180 810,143 876,143"/>
+    </svg>
+  </div>
+</div>

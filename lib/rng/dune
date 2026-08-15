@@ -1,0 +1,10 @@
+; Deliberately dependency-free. `algostream.advanced_models` depends on this (Ornstein_uhlenbeck's
+; path simulator), and `algostream.stochastic` depends on both — so if Rng lived alongside the
+; samplers in `stochastic`, that would be a cycle. Zero deps also means the reference-vector tests
+; exercise the generator in complete isolation.
+
+(library
+ (public_name algostream.rng)
+ (name algostream_rng)
+ (flags
+  (:standard -w -69)))

@@ -1,0 +1,15 @@
+(library
+ (public_name algostream.risk_management)
+ (name algostream_risk_management)
+ (libraries
+  algostream_common_utils
+  algostream_domain_common
+  algostream_domain_market
+  algostream_domain_orders
+  algostream_domain_portfolio
+  algostream_analytics
+  algostream_advanced_models
+  base
+  logs)
+ (flags
+  (:standard -w -69)))

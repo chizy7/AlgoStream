@@ -1,0 +1,20 @@
+(library
+ (public_name algostream.common.utils)
+ (name algostream_common_utils)
+ (libraries base unix stdio)
+ (flags
+  (:standard -w -26-32-69))
+ (foreign_stubs
+  (language c)
+  (names portable_stubs affinity_stubs clock_stubs)
+  (flags
+   (:standard -O2 -fPIC)))
+ (modules
+  affinity
+  cli
+  data_structures
+  memory_mapped
+  zero_copy
+  math_utils
+  benchmark
+  time_utils))

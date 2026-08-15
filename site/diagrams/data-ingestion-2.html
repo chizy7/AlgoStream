@@ -1,0 +1,34 @@
+<!-- Replaces the `stateDiagram-v2` at docs/guides/data_ingestion.md:86.
+     Rendered as state cards rather than a drawing: ten transitions across four
+     states is more legible as a list per state than as a graph. -->
+<div class="states">
+  <div class="state">
+    <h4>Connecting <span class="init">initial</span></h4>
+    <ul>
+      <li><span>note_connected</span><span class="to">Connected</span></li>
+      <li><span>note_failure · below threshold</span><span class="to">Reconnecting</span></li>
+      <li><span>note_failure · at threshold</span><span class="to">Open_circuit</span></li>
+    </ul>
+  </div>
+  <div class="state">
+    <h4>Connected</h4>
+    <ul>
+      <li><span>note_message · refreshes liveness</span><span class="to">Connected</span></li>
+      <li><span>note_failure · below threshold</span><span class="to">Reconnecting</span></li>
+      <li><span>note_failure · at threshold</span><span class="to">Open_circuit</span></li>
+    </ul>
+  </div>
+  <div class="state">
+    <h4>Reconnecting</h4>
+    <ul>
+      <li><span>ready_to_attempt · now ≥ next_at</span><span class="to">Connecting</span></li>
+      <li><span>failure threshold reached</span><span class="to">Open_circuit</span></li>
+    </ul>
+  </div>
+  <div class="state">
+    <h4>Open_circuit</h4>
+    <ul>
+      <li><span>circuit timer expires · now ≥ until_ns</span><span class="to">Connecting</span></li>
+    </ul>
+  </div>
+</div>

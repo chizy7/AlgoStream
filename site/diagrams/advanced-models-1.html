@@ -1,0 +1,65 @@
+<!-- Replaces the `flowchart LR` at docs/guides/advanced_models.md:145.
+     The PCA pipeline, wrapped across three rows so the seven stages stay
+     legible instead of running off the page. -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Pca.fit pipeline</span>
+    <span>7 stages</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 880 300" role="img"
+         aria-label="PCA pipeline: data is centred by column mean, a sample covariance is taken, eigen-decomposed with Eig.jacobi_sym, sorted by descending eigenvalue, producing components and explained variance, which then support transform and inverse_transform.">
+      <defs>
+        <marker id="ah-am1" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <!-- row 1 -->
+      <rect class="d-node" x="20" y="24" width="230" height="52" rx="2"/>
+      <text class="d-sub"   x="36" y="46">input</text>
+      <text class="d-title" x="36" y="65">data (n × p)</text>
+
+      <rect class="d-node" x="315" y="24" width="230" height="52" rx="2"/>
+      <text class="d-title" x="331" y="47">centre columns</text>
+      <text class="d-title" x="331" y="64">by mean</text>
+
+      <rect class="d-node" x="610" y="24" width="230" height="52" rx="2"/>
+      <text class="d-title" x="626" y="55">sample covariance</text>
+
+      <path class="d-edge" marker-end="url(#ah-am1)" d="M250,50 L309,50"/>
+      <path class="d-edge" marker-end="url(#ah-am1)" d="M545,50 L604,50"/>
+
+      <!-- wrap right-to-left -->
+      <path class="d-edge" marker-end="url(#ah-am1)" d="M725,76 L725,92 L135,92 L135,112"/>
+
+      <!-- row 2 -->
+      <rect class="d-node-a" x="20" y="118" width="230" height="52" rx="2"/>
+      <text class="d-title" x="36" y="149">Eig.jacobi_sym</text>
+
+      <rect class="d-node" x="315" y="118" width="230" height="52" rx="2"/>
+      <text class="d-title" x="331" y="141">sort eigenvalues</text>
+      <text class="d-title" x="331" y="158">descending</text>
+
+      <rect class="d-node-a" x="610" y="118" width="230" height="52" rx="2"/>
+      <text class="d-title" x="626" y="141">components</text>
+      <text class="d-title" x="626" y="158">explained_variance</text>
+
+      <path class="d-edge" marker-end="url(#ah-am1)" d="M250,144 L309,144"/>
+      <path class="d-edge" marker-end="url(#ah-am1)" d="M545,144 L604,144"/>
+
+      <!-- row 3 -->
+      <rect class="d-node" x="315" y="222" width="230" height="52" rx="2"/>
+      <text class="d-title" x="331" y="245">transform</text>
+      <text class="d-sub"   x="331" y="262">project new data</text>
+
+      <rect class="d-node" x="610" y="222" width="230" height="52" rx="2"/>
+      <text class="d-title" x="626" y="245">inverse_transform</text>
+      <text class="d-sub"   x="626" y="262">reconstruct</text>
+
+      <path class="d-edge" marker-end="url(#ah-am1)" d="M700,170 L700,196 L430,196 L430,216"/>
+      <path class="d-edge" marker-end="url(#ah-am1)" d="M725,170 L725,216"/>
+    </svg>
+  </div>
+</div>

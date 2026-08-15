@@ -1,0 +1,7 @@
+(test
+ (name test_runner)
+ (libraries
+  algostream.telemetry
+  algostream.infrastructure.event_bus
+  alcotest
+  unix))

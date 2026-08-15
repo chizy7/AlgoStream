@@ -1,0 +1,7 @@
+(test
+ (name test_runner)
+ (libraries
+  algostream.stochastic
+  algostream.rng
+  algostream.advanced_models
+  alcotest))

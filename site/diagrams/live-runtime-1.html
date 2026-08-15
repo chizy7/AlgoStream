@@ -1,0 +1,49 @@
+<!-- Replaces the `flowchart LR` in docs/guides/live_runtime.md.
+     The processor pattern again — same shape as analytics-1, pairs-1 and time-series-1 — with the
+     API domain as the reader rather than a strategy domain. -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Runtime topology</span>
+    <span>3 domains</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 900 268" role="img"
+         aria-label="The bus dispatcher domain feeds a shim subscriber into the runtime domain's drain loop, which owns the instance state — portfolio, fill engine, market view and strategy — and publishes an immutable snapshot read by the API domain.">
+      <defs>
+        <marker id="ah-lr1" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <rect class="d-group" x="8" y="44" width="200" height="206" rx="2"/>
+      <text class="d-glabel" x="20" y="36">Bus Dispatcher Domain</text>
+      <rect class="d-node" x="24" y="116" width="168" height="48" rx="2"/>
+      <text class="d-title" x="40" y="145">Dispatcher loop</text>
+
+      <rect class="d-group" x="328" y="44" width="270" height="206" rx="2"/>
+      <text class="d-glabel" x="340" y="36">Runtime Domain</text>
+      <rect class="d-node" x="344" y="66" width="238" height="42" rx="2"/>
+      <text class="d-title" x="360" y="92">Drain loop</text>
+      <rect class="d-node-a" x="344" y="132" width="238" height="100" rx="2"/>
+      <text class="d-sub"   x="360" y="156">Instance state</text>
+      <text class="d-title" x="360" y="175">portfolio · fill engine</text>
+      <text class="d-title" x="360" y="193">market view · cost model</text>
+      <text class="d-title" x="360" y="211">Strategy.S</text>
+      <path class="d-edge" marker-end="url(#ah-lr1)" d="M463,108 L463,126"/>
+
+      <rect class="d-group" x="698" y="44" width="194" height="206" rx="2"/>
+      <text class="d-glabel" x="710" y="36">API Domain</text>
+      <rect class="d-node" x="714" y="116" width="162" height="48" rx="2"/>
+      <text class="d-title" x="730" y="139">Supervisor</text>
+      <text class="d-sub"   x="730" y="155">.snapshot</text>
+
+      <text class="d-elabel" x="268" y="12" text-anchor="middle">shim subscriber</text>
+      <text class="d-elabel" x="268" y="24" text-anchor="middle">translate · SPSC enqueue</text>
+      <path class="d-edge" marker-end="url(#ah-lr1)" d="M192,140 C 250,140 260,88 338,88"/>
+
+      <text class="d-elabel" x="648" y="258" text-anchor="middle">Atomic.set Snapshot.instance</text>
+      <path class="d-edge" marker-end="url(#ah-lr1)" d="M582,182 C 640,182 650,140 708,140"/>
+    </svg>
+  </div>
+</div>

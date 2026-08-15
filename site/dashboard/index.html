@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Dashboard — AlgoStream</title>
+  <meta name="description" content="Live monitoring for AlgoStream: latency, throughput, feed health, pairs signals, portfolio and strategy control.">
+  <meta name="theme-color" content="#0A0A0B">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+
+  <link rel="stylesheet" href="../assets/algostream.css">
+
+  <style>
+    /* ───── dashboard only ────────────────────────────────────────── */
+    .shell { gap: 22px; max-width: 1440px; }
+
+    /* minmax(0, 1fr) rather than 1fr throughout: a grid track defaults to min-width:auto, so a
+       nowrap table inside a panel refuses to shrink and pushes the whole shell wider than the
+       viewport. min-width:0 on the panel itself is the other half of the same fix. */
+    .dash { display: grid; gap: 20px; }
+    .dash > *, .row2 > *, .row3 > * { min-width: 0; }
+    .row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+    .row3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+    @media (max-width: 1080px) { .row2, .row3 { grid-template-columns: minmax(0, 1fr); } }
+
+    .panel-body { padding: 16px; }
+
+    /* status pill */
+    .pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 3px 10px;
+      font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+      border: 1px solid var(--border-hi);
+    }
+    .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+    .pill.ok       { color: var(--live);  border-color: rgba(74,226,90,.4); }
+    .pill.ok .dot  { background: var(--live); box-shadow: 0 0 8px var(--live); }
+    .pill.degraded { color: var(--amber); border-color: rgba(255,162,26,.4); }
+    .pill.degraded .dot { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+    .pill.failed   { color: var(--warn);  border-color: rgba(226,114,74,.5); }
+    .pill.failed .dot { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+
+    /* stat grid */
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); background: var(--surface); min-width: 0; }
+    .stat { padding: 14px 16px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .stat .k { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+    .stat .v { font-size: 22px; font-weight: 600; letter-spacing: -0.03em; color: var(--amber); line-height: 1;
+               font-feature-settings: var(--tnum); }
+    .stat .v.plain { color: var(--cream); }
+    .stat .v.good  { color: var(--live); }
+    .stat .v.bad   { color: var(--warn); }
+    .stat .n { margin-top: 8px; font-size: 10.5px; color: var(--dim); }
+
+    /* charts */
+    .chart { width: 100%; height: 120px; display: block; }
+    .chart-tall { height: 170px; }
+    .ch-axis { stroke: var(--dim); stroke-width: .4; stroke-dasharray: 1.5 2; vector-effect: non-scaling-stroke; }
+    .ch-band { stroke: var(--warn); stroke-width: .6; stroke-dasharray: 2 2; vector-effect: non-scaling-stroke; opacity: .8; }
+    .cmp-a { stroke: var(--amber); }
+    .cmp-b { stroke: var(--cyan, #4fd1c5); stroke-dasharray: 3 2; }
+    .cmp-legend { display: flex; gap: 1.2rem; margin-bottom: .4rem; font-size: .78rem; }
+    .cmp-key { display: inline-flex; align-items: center; gap: .35rem; }
+    .cmp-swatch { width: .8rem; height: 0; border-top: 2px solid var(--amber); display: inline-block; }
+    .cmp-swatch.b { border-top: 2px dashed var(--cyan, #4fd1c5); }
+    .ch-line { stroke: var(--amber); stroke-width: 1; fill: none; vector-effect: non-scaling-stroke;
+               stroke-linejoin: round; }
+    .ch-fill { fill: rgba(255,162,26,.12); }
+    .chart-legend { display: flex; justify-content: space-between; font-size: 10px; color: var(--dim);
+                    letter-spacing: .1em; text-transform: uppercase; margin-top: 6px; }
+
+    /* bars */
+    .ch-bar { display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 66px; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .ch-bar-label { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+    .ch-bar-track { height: 8px; background: #16161B; border: 1px solid var(--border); position: relative; }
+    .ch-bar-fill  { position: absolute; inset: 0 auto 0 0; background: var(--amber-dim); }
+    .ch-bar-fill.ok  { background: var(--live); }
+    .ch-bar-fill.warn{ background: var(--amber); }
+    .ch-bar-fill.bad { background: var(--warn); }
+    .ch-bar-value { font-size: 11px; color: var(--cream); text-align: right; font-feature-settings: var(--tnum); }
+
+    /* tables */
+    .tbl-wrap { overflow-x: auto; }
+    table.d { width: 100%; border-collapse: collapse; font-size: 12px; }
+    table.d th { text-align: left; font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase;
+                 color: var(--muted); padding: 9px 12px; border-bottom: 1px solid var(--border-hi); white-space: nowrap; }
+    table.d td { padding: 9px 12px; border-bottom: 1px solid var(--border); color: #C9C4B8; white-space: nowrap;
+                 font-feature-settings: var(--tnum); }
+    table.d tr:last-child td { border-bottom: none; }
+    table.d td.pos { color: var(--live); }
+    table.d td.neg { color: var(--warn); }
+    .empty-note { padding: 22px 16px; color: var(--dim); font-size: 12px; text-align: center; }
+
+    /* strategy control */
+    .strat { border-bottom: 1px solid var(--border); padding: 14px 16px; }
+    .strat:last-child { border-bottom: none; }
+    .strat-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .strat-name { font-size: 14px; font-weight: 600; color: var(--cream); }
+    .strat-sub { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+    .ctl { display: flex; gap: 8px; }
+    .ctl button {
+      font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+      padding: 6px 12px; background: transparent; color: var(--cream);
+      border: 1px solid var(--border-hi); cursor: pointer;
+      transition: color .15s ease, border-color .15s ease;
+    }
+    .ctl button:hover:not(:disabled) { color: var(--amber); border-color: var(--amber); }
+    .ctl button:disabled { color: var(--dim); cursor: not-allowed; }
+    .strat-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 12px; }
+    .strat-metrics div { font-size: 11px; color: var(--muted); }
+    .strat-metrics b { display: block; font-size: 14px; color: var(--cream); font-weight: 600; margin-top: 3px;
+                       font-feature-settings: var(--tnum); }
+
+    /* alerts */
+    .alert-row { display: flex; gap: 12px; align-items: baseline; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+    .alert-row:last-child { border-bottom: none; }
+    .alert-code { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; flex: none; width: 130px; }
+    .alert-row.critical .alert-code { color: var(--warn); }
+    .alert-row.warning  .alert-code { color: var(--amber); }
+    .alert-row.info     .alert-code { color: var(--muted); }
+    .alert-msg { font-size: 12px; color: #C9C4B8; }
+    .alert-count { margin-left: auto; font-size: 10px; color: var(--dim); flex: none; }
+
+    /* paper-trading banner — the single most important thing on the page */
+    .paper {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 16px;
+      border: 1px solid var(--amber-deep);
+      background: linear-gradient(90deg, rgba(255,162,26,.06), transparent 60%);
+      font-size: 11px; letter-spacing: .06em; color: var(--amber-dim);
+    }
+    .paper strong { color: var(--amber); letter-spacing: .16em; text-transform: uppercase; font-size: 10px; }
+    .paper code { color: var(--cream); background: var(--surface); border: 1px solid var(--border);
+                  padding: 1px 5px; font-size: 10.5px; }
+    .paper.demo { border-color: var(--border-hi); background: linear-gradient(90deg, rgba(255,255,255,.03), transparent 60%);
+                  color: var(--muted); }
+    .paper.demo strong { color: var(--cream); }
+    .paper.demo b { color: var(--cream); font-weight: 600; }
+
+    .disconnected { color: var(--warn); }
+  </style>
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <!-- Relative, not "/": on GitHub Pages this is a PROJECT site served under
+             /AlgoStream/, so an absolute path lands on chizy7.github.io/ and 404s. Every
+             navigation link on this page must be relative to survive both hosts. -->
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <span>dashboard</span>
+      </div>
+      <div class="group">
+        <span id="uptime">—</span>
+        <span class="sep">/</span>
+        <span id="conn" class="live"><span class="live-dot" aria-hidden="true"></span><span id="conn-text">connecting</span></span>
+      </div>
+      <div style="margin-top:.4rem;font-size:.85em;opacity:.75;">
+        <span id="whoami"></span>
+        <button id="sign-out" type="button"
+                style="font:inherit;background:none;border:0;color:inherit;text-decoration:underline;cursor:pointer;padding:0 .4rem;">sign out</button>
+      </div>
+    </header>
+
+    <div class="paper demo" id="key-prompt" hidden>
+      <strong>Key</strong>
+      <span id="key-prompt-msg">This daemon requires an API key.</span>
+      <form id="key-form" style="display:inline-flex;gap:.5rem;margin-left:.75rem;">
+        <input id="key-input" type="password" autocomplete="off" spellcheck="false"
+               placeholder="ask_…" aria-label="API key"
+               style="font:inherit;padding:.2rem .4rem;min-width:22ch;" />
+        <button type="submit" style="font:inherit;">use</button>
+      </form>
+      <span style="margin-left:.75rem;opacity:.7;">
+        <code>algostream-keyctl add --label dashboard --scopes read,control</code>
+      </span>
+    </div>
+
+    <div class="paper demo" id="demo-banner" hidden>
+      <strong>Demo</strong>
+      <span>This is a <b>recorded snapshot</b> from a replay run, not a live system — no daemon is
+        attached, so nothing updates and the controls do nothing. Run
+        <code>make dash</code> locally for the real thing.</span>
+    </div>
+
+    <div class="paper">
+      <strong>Paper</strong>
+      <span>Every order, fill and P&amp;L figure below is simulated against live quotes. This project has no
+        venue connectivity — no credentials, no request signing, no trading endpoint.</span>
+    </div>
+
+    <div class="dash">
+      <!-- system -->
+      <div class="panel">
+        <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+        <div class="panel-head"><span>System</span><span id="overall-pill"></span></div>
+        <div class="stats" id="system-stats"></div>
+      </div>
+
+      <div class="row2">
+        <div class="panel">
+          <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+          <div class="panel-head"><span>End-to-end latency</span><span class="seq" id="lat-note">p99 vs 5 ms SLA</span></div>
+          <div class="panel-body">
+            <svg class="chart chart-tall" id="lat-chart"></svg>
+            <div class="chart-legend"><span id="lat-lo">—</span><span id="lat-hi">—</span></div>
+          </div>
+        </div>
+        <div class="panel">
+          <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+          <div class="panel-head"><span>Throughput</span><span class="seq" id="tp-note">events/sec</span></div>
+          <div class="panel-body">
+            <svg class="chart chart-tall" id="tp-chart"></svg>
+            <div class="chart-legend"><span id="tp-lo">—</span><span id="tp-hi">—</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="panel">
+          <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+          <div class="panel-head"><span>Queue depth by band</span><span class="seq">critical first</span></div>
+          <div class="panel-body" id="bands"></div>
+        </div>
+        <div class="panel">
+          <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+          <div class="panel-head"><span>Subsystems</span><span class="seq" id="comp-count">—</span></div>
+          <div class="tbl-wrap"><table class="d" id="components"></table></div>
+        </div>
+      </div>
+
+      <!-- portfolio -->
+      <div class="panel">
+        <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+        <div class="panel-head"><span>Portfolio</span><span class="seq" id="nav-note">simulated</span></div>
+        <div class="panel-body"><svg class="chart" id="nav-chart"></svg></div>
+        <div class="stats" id="portfolio-stats"></div>
+      </div>
+
+      <!-- strategies -->
+      <div class="panel">
+        <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+        <div class="panel-head"><span>Strategies</span><span class="seq" id="strat-count">—</span></div>
+        <div id="strategies"></div>
+      </div>
+
+      <!-- strategy comparison: only shown when two instances are running -->
+      <div class="panel" id="compare-panel" hidden>
+        <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+        <div class="panel-head">
+          <span>Comparison</span><span class="seq" id="cmp-note">—</span>
+        </div>
+        <div class="panel-body">
+          <div class="cmp-legend">
+            <span class="cmp-key"><i class="cmp-swatch a"></i><span id="cmp-a-name">—</span></span>
+            <span class="cmp-key"><i class="cmp-swatch b"></i><span id="cmp-b-name">—</span></span>
+          </div>
+          <svg class="chart" id="cmp-chart"></svg>
+          <div class="tbl-wrap"><table class="d" id="cmp-stats"></table></div>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="panel">
+          <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+          <div class="panel-head"><span>Positions</span><span class="seq" id="pos-count">—</span></div>
+          <div class="tbl-wrap"><table class="d" id="positions"></table></div>
+        </div>
+        <div class="panel">
+          <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+          <div class="panel-head"><span>Recent fills</span><span class="seq" id="fill-count">—</span></div>
+          <div class="tbl-wrap"><table class="d" id="fills"></table></div>
+        </div>
+      </div>
+
+      <!-- alerts -->
+      <div class="panel">
+        <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+        <div class="panel-head"><span>Alerts</span><span class="seq" id="alert-count">—</span></div>
+        <div id="alerts"></div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">algostream daemon</span>
+│ mode       <span class="check">✓</span>  paper — no venue connectivity
+│ transport  <span class="check">✓</span>  server-sent events
+└─ auth      bearer keys · read/control scopes · audit log</pre>
+      <div></div>
+      <div class="meta-right"><a href="../"><strong>algostream</strong></a><br><span id="last-update">—</span></div>
+    </footer>
+  </main>
+
+  <script src="../assets/chart.js"></script>
+  <script src="./dashboard.js"></script>
+</body>
+</html>

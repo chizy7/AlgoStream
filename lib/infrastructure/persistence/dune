@@ -1,0 +1,7 @@
+; Deliberately minimal dependencies. The audit log must be readable by a tool that does not link the
+; daemon — independent readback is what makes a verification result worth anything.
+
+(library
+ (public_name algostream.infrastructure.persistence)
+ (name algostream_infrastructure_persistence)
+ (libraries digestif.c unix))

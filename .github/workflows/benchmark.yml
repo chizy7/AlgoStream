@@ -1,0 +1,166 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# Shared with pages.yml: both jobs commit to gh-pages, so they must never
+# run at the same time. Queue rather than cancel — a dropped benchmark run
+# would leave a hole in the history.
+concurrency:
+  group: gh-pages-push
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Use OCaml 5.1.x
+      uses: ocaml/setup-ocaml@v3
+      with:
+        ocaml-compiler: "5.1.x"
+        dune-cache: true
+        opam-depext: true
+        disable-sandbox: true
+
+    - name: Install dependencies
+      run: opam install . --deps-only --with-test
+
+    - name: Build benchmark binaries (release profile)
+      run: |
+        opam exec -- dune build --profile release bin/benchmark.exe
+        opam exec -- dune build --profile release test/performance/event_bus_latency.exe
+        opam exec -- dune build --profile release test/performance/event_bus_throughput.exe
+        opam exec -- dune build --profile release test/performance/ingestion_throughput.exe
+        opam exec -- dune build --profile release test/performance/ingestion_alloc.exe
+        opam exec -- dune build --profile release test/performance/analytics_throughput.exe
+        opam exec -- dune build --profile release test/performance/bar_builder_throughput.exe
+        opam exec -- dune build --profile release test/performance/compress_roundtrip.exe
+        opam exec -- dune build --profile release test/performance/pairs_throughput.exe
+        opam exec -- dune build --profile release test/performance/advanced_models_throughput.exe
+        opam exec -- dune build --profile release test/performance/order_management_throughput.exe
+        opam exec -- dune build --profile release test/performance/risk_management_throughput.exe
+        opam exec -- dune build --profile release test/performance/rng_throughput.exe
+        opam exec -- dune build --profile release test/performance/backtest_throughput.exe
+        opam exec -- dune build --profile release test/performance/metrics_throughput.exe
+        opam exec -- dune build --profile release test/performance/telemetry_throughput.exe
+        opam exec -- dune build --profile release test/performance/montecarlo_throughput.exe
+
+    - name: Run core benchmark suite
+      run: opam exec -- dune exec --profile release bin/benchmark.exe -- --json bench_results.core.json
+
+    - name: Run event-bus latency benchmark
+      run: opam exec -- dune exec --profile release test/performance/event_bus_latency.exe -- --json bench_results.bus_latency.json
+
+    - name: Run event-bus throughput benchmark
+      run: opam exec -- dune exec --profile release test/performance/event_bus_throughput.exe -- --json bench_results.bus_throughput.json
+
+    - name: Run ingestion throughput benchmark
+      run: opam exec -- dune exec --profile release test/performance/ingestion_throughput.exe -- --json bench_results.ingestion_throughput.json
+
+    - name: Run ingestion allocation benchmark
+      run: opam exec -- dune exec --profile release test/performance/ingestion_alloc.exe -- --json bench_results.ingestion_alloc.json
+
+    - name: Run analytics throughput benchmark
+      run: opam exec -- dune exec --profile release test/performance/analytics_throughput.exe -- --json bench_results.analytics_throughput.json
+
+    - name: Run bar builder throughput benchmark
+      run: opam exec -- dune exec --profile release test/performance/bar_builder_throughput.exe -- --json bench_results.bar_builder_throughput.json
+
+    - name: Run compression round-trip benchmark
+      run: opam exec -- dune exec --profile release test/performance/compress_roundtrip.exe -- --json bench_results.compress_roundtrip.json
+
+    - name: Run pairs throughput benchmark
+      run: opam exec -- dune exec --profile release test/performance/pairs_throughput.exe -- --json bench_results.pairs_throughput.json
+
+    - name: Run advanced models throughput benchmark
+      run: opam exec -- dune exec --profile release test/performance/advanced_models_throughput.exe -- --json bench_results.advanced_models_throughput.json
+
+    - name: Run order management throughput benchmark
+      run: opam exec -- dune exec --profile release test/performance/order_management_throughput.exe -- --json bench_results.order_management_throughput.json
+
+    - name: Run risk management throughput benchmark
+      run: opam exec -- dune exec --profile release test/performance/risk_management_throughput.exe -- --json bench_results.risk_management_throughput.json
+
+    - name: Run RNG throughput benchmark
+      run: opam exec -- dune exec --profile release test/performance/rng_throughput.exe -- --json bench_results.rng_throughput.json
+
+    - name: Run backtest engine throughput benchmark
+      run: opam exec -- dune exec --profile release test/performance/backtest_throughput.exe -- --json bench_results.backtest_throughput.json
+
+    - name: Run performance-analytics throughput benchmark
+      run: opam exec -- dune exec --profile release test/performance/metrics_throughput.exe -- --json bench_results.metrics_throughput.json
+
+    - name: Run telemetry throughput benchmark
+      run: opam exec -- dune exec --profile release test/performance/telemetry_throughput.exe -- --json bench_results.telemetry_throughput.json
+
+    - name: Run Monte Carlo throughput benchmark
+      run: opam exec -- dune exec --profile release test/performance/montecarlo_throughput.exe -- --json bench_results.montecarlo_throughput.json
+
+    - name: Combine JSON results
+      run: |
+        jq -s 'add' \
+          bench_results.core.json \
+          bench_results.bus_latency.json \
+          bench_results.bus_throughput.json \
+          bench_results.ingestion_throughput.json \
+          bench_results.ingestion_alloc.json \
+          bench_results.analytics_throughput.json \
+          bench_results.bar_builder_throughput.json \
+          bench_results.compress_roundtrip.json \
+          bench_results.pairs_throughput.json \
+          bench_results.advanced_models_throughput.json \
+          bench_results.order_management_throughput.json \
+          bench_results.risk_management_throughput.json \
+          bench_results.rng_throughput.json \
+          bench_results.backtest_throughput.json \
+          bench_results.metrics_throughput.json \
+          bench_results.telemetry_throughput.json \
+          bench_results.montecarlo_throughput.json \
+          > bench_results.json
+        cat bench_results.json
+
+    - name: Upload bench artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: bench-results-${{ github.sha }}
+        path: bench_results.json
+        retention-days: 30
+
+    - name: Publish to gh-pages and check for regressions
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        tool: customSmallerIsBetter
+        output-file-path: bench_results.json
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        # 300%, measured rather than guessed. These run on shared GitHub runners, so the honest
+        # floor is how far two runs of the IDENTICAL commit diverge. Across the gh-pages history
+        # the worst such spread among tracked metrics is 2.61x (Monotonic Clock), with the
+        # event-bus latency percentiles at 2.2-2.3x. A 200% threshold therefore false-alarmed on
+        # 7 of 53 metrics regardless of what the code did — which is what finally happened on
+        # 360b2dea.
+        #
+        # Two metrics were removed rather than accommodated, because no threshold could rescue
+        # them: event_bus.publish_to_handler.min varied 15.7x on a single commit (it is the
+        # luckiest of 50k samples, so it measures scheduler luck), and pairs.bus.throughput_ev_s
+        # varied 114x AND was mis-signalled by customSmallerIsBetter, so a throughput collapse
+        # registered as an improvement. Both ev/s metrics are now published as ns_per_event.
+        alert-threshold: '300%'
+        comment-on-alert: true
+        # Still soft on PRs, hard on main. Kept hard rather than disabled: with the pathological
+        # metrics gone and the threshold set from measured noise, an alert now carries signal, and
+        # turning fail-on-alert off would have thrown the gate away to silence a false positive.
+        fail-on-alert: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        summary-always: true

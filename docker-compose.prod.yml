@@ -1,0 +1,101 @@
+# The observability stack: the daemon plus Prometheus, Grafana and Alertmanager.
+#
+# Separate from docker-compose.yml, which stays exactly as it was — that file is the profiling dev
+# shell with SYS_ADMIN and seccomp:unconfined, and it must not become the basis of anything that
+# runs unattended.
+#
+#   make stack-up      build, generate a scrape key, and bring everything up
+#   make stack-down    tear it down
+#
+# The scrape key has to exist before Prometheus starts, which is what the Makefile target handles:
+#
+#   algostream-keyctl add --file ./secrets/keys.json --label prometheus --scopes read \
+#     | awk '/^key:/{printf "%s", $2}' > ./secrets/algostream.key
+#
+# No trailing newline — Prometheus sends the file's bytes verbatim as the bearer token, and a
+# newline makes every scrape 401 with an error that does not mention whitespace.
+
+services:
+  algostream:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: algostream:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./secrets/keys.json:/etc/algostream/keys.json:ro
+      - audit:/var/lib/algostream/audit
+    # The daemon is a latency-sensitive multicore process; give it room and a predictable floor.
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 2G
+        reservations:
+          cpus: '2'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - ./secrets/algostream.key:/etc/prometheus/algostream.key:ro
+      - prometheus:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    depends_on:
+      algostream:
+        condition: service_healthy
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana:/var/lib/grafana
+    environment:
+      # Anonymous viewer access, because every port here is bound to loopback and the alternative is
+      # a default admin password committed to the repository. Do not expose 3000 without changing
+      # this.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    depends_on:
+      - prometheus
+
+volumes:
+  audit:
+  prometheus:
+  alertmanager:
+  grafana:

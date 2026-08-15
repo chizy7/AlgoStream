@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/chizy7/AlgoStream/security/advisories/new
+    about: Report privately through GitHub advisories. Never open a public issue for a vulnerability.
+  - name: Documentation
+    url: https://chizy7.github.io/AlgoStream/guides/
+    about: 24 guides and the generated API reference.
+  - name: Questions and ideas
+    url: https://github.com/chizy7/AlgoStream/discussions
+    about: For open-ended questions rather than a specific bug.

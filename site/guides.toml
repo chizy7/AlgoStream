@@ -1,0 +1,332 @@
+# ═══════════════════════════════════════════════════════════════════
+# Presentation metadata for the generated documentation pages.
+#
+# One table per file in docs/guides/, keyed by its stem. Kept here
+# rather than as front matter in the markdown, because front matter
+# renders as junk when the guides are read on GitHub.
+#
+# scripts/gen-guides.py fails if a guide on disk has no entry here, and
+# fails if an entry has no matching guide. That is deliberate: it is what
+# stops a new guide being silently dropped from the index.
+#
+# Required: nav_label, group, order.
+# Optional: h1, accent, phase, status, meta, footer.
+#   h1      display title; defaults to the markdown H1 with a trailing
+#           "Guide" stripped
+#   accent  the substring of h1 rendered in amber; defaults to the last word
+#   meta    chips under the title. A "source" chip linking to the markdown
+#           on GitHub is appended automatically.
+#   footer  lines for the ASCII block in the page footer
+# ═══════════════════════════════════════════════════════════════════
+
+# ───── Foundations ─────────────────────────────────────────────────
+
+[getting_started]
+nav_label = "Getting Started"
+h1        = "getting started"
+accent    = "started"
+group     = "Foundations"
+order     = 1
+meta = [
+  { k = "toolchain", v = "OCaml 5.x · dune 3.16" },
+  { k = "covers",    v = "build · test · profile" },
+]
+
+[domain_models]
+nav_label = "Domain Models"
+h1        = "domain models"
+accent    = "models"
+group     = "Foundations"
+order     = 3
+meta = [
+  { k = "library", v = "lib/domain/" },
+  { k = "covers",  v = "orders · trades · portfolio · pairs" },
+]
+
+[event_bus]
+nav_label = "Event Bus"
+h1        = "event bus"
+accent    = "bus"
+group     = "Foundations"
+order     = 4
+meta = [
+  { k = "library", v = "lib/infrastructure/event_bus/" },
+  { k = "queue",   v = "4 priority bands · lock-free" },
+]
+footer = [
+  "publish     ✓  4-band priority queue",
+  "replay      ✓  bin_prot event log",
+  "instrument  ✓  latency + memtrace",
+]
+
+[strategy_development]
+nav_label = "Writing a Strategy"
+h1        = "strategy development"
+accent    = "development"
+group     = "Foundations"
+order     = 2
+status    = "tutorial"
+meta = [
+  { k = "interface", v = "Strategy.S" },
+  { k = "contract",  v = "same code backtest and live" },
+]
+footer = [
+  "on_event is pure — CI bans the clock and the RNG under lib/strategy/",
+]
+
+# ───── Market Data ───────────────────────────────────────
+
+[data_ingestion]
+nav_label = "Data Ingestion"
+h1        = "data ingestion"
+accent    = "ingestion"
+group     = "Market Data"
+order     = 1
+meta = [
+  { k = "exchanges", v = "Binance · Coinbase" },
+  { k = "library",   v = "lib/data_ingestion/" },
+]
+footer = [
+  "binance     ✓  ~427k ev/s · bookTicker + trade",
+  "coinbase    ✓  ~349k ev/s · ticker + matches",
+  "sla         ✓  50k ev/s target",
+]
+
+[normalization]
+nav_label = "Normalization & Quality"
+h1        = "normalization & quality"
+accent    = "quality"
+group     = "Market Data"
+order     = 2
+meta = [
+  { k = "library", v = "lib/normalization/" },
+  { k = "covers",  v = "canonical symbols · lineage · breaks" },
+]
+
+[time_series]
+nav_label = "Time Series"
+h1        = "time series"
+accent    = "series"
+group     = "Market Data"
+order     = 3
+meta = [
+  { k = "library", v = "lib/time_series/" },
+  { k = "covers",  v = "bars · alignment · compression" },
+]
+
+[analytics]
+nav_label = "Statistical Processing"
+h1        = "statistical processing"
+accent    = "processing"
+group     = "Market Data"
+order     = 4
+meta = [
+  { k = "library", v = "lib/analytics/" },
+  { k = "covers",  v = "denoise · rolling stats · regime" },
+]
+
+# ───── Strategy ──────────────────────────────────────────
+
+[pairs]
+nav_label = "Pairs Trading"
+h1        = "pairs trading"
+accent    = "trading"
+group     = "Strategy"
+order     = 1
+meta = [
+  { k = "library", v = "lib/pairs/" },
+  { k = "covers",  v = "cointegration · hedge ratio · spread" },
+]
+
+[advanced_models]
+nav_label = "Advanced Models"
+h1        = "advanced models"
+accent    = "models"
+group     = "Strategy"
+order     = 2
+meta = [
+  { k = "library", v = "lib/advanced_models/" },
+  { k = "covers",  v = "Kalman · GARCH · OU · PCA" },
+]
+
+[order_management]
+nav_label = "Order Management"
+h1        = "order management"
+accent    = "management"
+group     = "Strategy"
+order     = 3
+meta = [
+  { k = "library", v = "lib/order_management/" },
+  { k = "covers",  v = "routing · sizing · TCA · impact" },
+]
+
+[risk_management]
+nav_label = "Risk Management"
+h1        = "risk management"
+accent    = "management"
+group     = "Strategy"
+order     = 4
+meta = [
+  { k = "library", v = "lib/risk_management/" },
+  { k = "covers",  v = "VaR · drawdown · circuit breaker" },
+]
+
+# ───── Research ──────────────────────────────────────────
+
+[backtesting]
+nav_label = "Backtesting"
+h1        = "high-fidelity backtesting"
+accent    = "backtesting"
+group     = "Research"
+order     = 1
+meta = [
+  { k = "library", v = "lib/backtest/" },
+  { k = "covers",  v = "Strategy.S · fills · costs · latency" },
+]
+
+[monte_carlo]
+nav_label = "Monte Carlo"
+h1        = "monte carlo"
+accent    = "carlo"
+group     = "Research"
+order     = 2
+meta = [
+  { k = "library", v = "lib/montecarlo/" },
+  { k = "covers",  v = "bootstrap · regimes · stress" },
+]
+
+[performance_analytics]
+nav_label = "Performance Analytics"
+h1        = "performance analytics"
+accent    = "analytics"
+group     = "Research"
+order     = 3
+meta = [
+  { k = "library", v = "lib/performance/" },
+  { k = "covers",  v = "ratios · drawdown episodes · attribution" },
+]
+
+[optimization]
+nav_label = "Strategy Optimization"
+h1        = "strategy optimization"
+accent    = "optimization"
+group     = "Research"
+order     = 4
+meta = [
+  { k = "library", v = "lib/optimization/" },
+  { k = "covers",  v = "walk-forward · purged CV · PBO" },
+]
+
+# ───── Operations ──────────────────────────────────────────────────
+
+[performance_tuning]
+nav_label = "Performance Tuning"
+h1        = "performance tuning"
+accent    = "tuning"
+group     = "Operations"
+order     = 5
+status    = "reference"
+meta = [
+  { k = "scope",  v = "runtime · OS · deployment" },
+  { k = "covers", v = "CPU pinning · GC · NUMA · cloud" },
+]
+
+# ───── Operations ──────────────────────────────────────────────────
+
+[dashboard]
+nav_label = "Dashboard"
+h1        = "the dashboard"
+accent    = "dashboard"
+group     = "Operations"
+order     = 1
+meta = [
+  { k = "library", v = "lib/infrastructure/network/" },
+  { k = "transport", v = "server-sent events · 4 Hz" },
+]
+
+[telemetry]
+nav_label = "Telemetry"
+h1        = "telemetry"
+accent    = "telemetry"
+group     = "Operations"
+order     = 2
+meta = [
+  { k = "library", v = "lib/telemetry/" },
+  { k = "covers",  v = "percentiles · health · alerts" },
+]
+
+[live_runtime]
+nav_label = "Live Runtime"
+h1        = "live runtime"
+accent    = "runtime"
+group     = "Operations"
+order     = 3
+status    = "paper only"
+meta = [
+  { k = "library", v = "lib/runtime/" },
+  { k = "mode",    v = "paper — no venue connectivity" },
+]
+
+[reporting]
+nav_label = "Reporting"
+h1        = "reporting"
+accent    = "reporting"
+group     = "Operations"
+order     = 4
+meta = [
+  { k = "library", v = "lib/reporting/" },
+  { k = "formats", v = "CSV · JSON" },
+]
+
+
+[security]
+nav_label = "Security"
+h1        = "security"
+accent    = "security"
+group     = "Operations"
+order     = 6
+meta = [
+  { k = "library", v = "lib/infrastructure/auth/" },
+  { k = "scope",   v = "control surface — not money" },
+]
+footer = [
+  "keys are shown once; only sha256 is stored",
+  "inbound TLS is a deliberate deferral — see the guide",
+]
+
+[deployment]
+nav_label = "Deployment"
+h1        = "deployment"
+accent    = "deployment"
+group     = "Operations"
+order     = 7
+status    = "container verified · k8s dry-run only"
+meta = [
+  { k = "artifacts", v = "Dockerfile · compose · k8s/" },
+  { k = "verified",  v = "compose end-to-end; k8s by kubeconform" },
+]
+
+[operations]
+nav_label = "Runbook"
+h1        = "operations runbook"
+accent    = "runbook"
+group     = "Operations"
+order     = 8
+meta = [
+  { k = "use", v = "when something is wrong" },
+]
+footer = [
+  "every alert has a look-alike — check the source before the cause",
+]
+
+# ───── Group ordering on the index page ────────────────────────────
+
+[_groups]
+order = ["Foundations", "Market Data", "Strategy", "Research", "Operations"]
+
+[_groups.blurb]
+"Foundations" = "Getting a build running, writing a strategy, and the event bus and domain types underneath."
+"Market Data" = "Live feeds in, normalized bars and statistics out."
+"Strategy"    = "Cointegration, models, order routing and risk control."
+"Research"    = "Backtesting, Monte Carlo simulation, performance measurement and parameter search."
+"Operations"  = "Running it, watching it, securing it, and knowing what to do when it breaks."
