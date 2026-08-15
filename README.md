@@ -16,18 +16,31 @@
 
 ---
 
+> [!NOTE]
+> **This is a public portion of a larger private project, published as a reference for people
+> learning this domain.** The proprietary side (strategies, their parameters, and the research
+> around them) stays private and is not here. What is here is the machinery underneath: an event
+> bus, market-data ingestion, cointegration analytics, a fill simulator, a risk gate and a live
+> runtime, complete enough to build, test and run end to end.
+>
+> If you are trying to understand how an algorithmic-trading system is actually put together, and
+> where the honest limits of each piece are, that is what this repository is for. Execution is
+> simulated at present, and the docs are explicit about which numbers are measured and which
+> cannot be until there is a venue behind them.
+
 ## Overview
 
 AlgoStream is an event-driven platform for researching statistical-arbitrage strategies: live
 market-data ingestion, cointegration and mean-reversion analytics, a backtest engine, and a live
 runtime that drives the same strategy code against a real feed.
 
-**It is paper trading.** There is no venue connectivity anywhere in the project — no exchange
+**Execution is simulated.** There is no venue connectivity in this repository today: no exchange
 credentials, no request signing, no trading endpoint, so nothing here can place a real order. Fills
 are simulated against live quotes by the same engine the backtester uses, and
 `test/runtime/test_parity.exe` asserts the live runtime and the backtest produce identical results
-from one fixture. That equivalence is the claim the project makes; anything about real execution
-would need a venue this project does not have.
+from one fixture. That equivalence is the claim the project makes today; real execution latency and
+fill quality are marked unmeasured wherever they appear, and stay that way until there is a venue
+behind them.
 
 ### Measured
 
@@ -43,7 +56,7 @@ stated offered load; there is no venue leg to include, so this is not an order-e
 
 The other latency benchmark, `event_bus_latency`, saturates the bus on purpose and reports queueing
 delay in the tens of milliseconds by construction. Both are real and they answer different
-questions — `paced-bench` is the one comparable to a latency target.
+questions. `paced-bench` is the one comparable to a latency target.
 
 ## Architecture
 
@@ -69,7 +82,7 @@ same `Strategy.S` runs under the backtester and the live runtime.
 | `montecarlo`, `optimization`, `performance` | Simulation, walk-forward, attribution | [monte carlo](docs/guides/monte_carlo.md) · [optimization](docs/guides/optimization.md) |
 | `runtime`, `telemetry`, `reporting` | Live paper runner, metrics, report export | [live runtime](docs/guides/live_runtime.md) · [telemetry](docs/guides/telemetry.md) |
 
-Written in OCaml 5.x — `Domain` for parallelism, `Atomic` for publication, Lwt for I/O. The
+Written in OCaml 5.x, using `Domain` for parallelism, `Atomic` for publication and Lwt for I/O. The
 numerics are hand-rolled rather than pulled from a linear-algebra dependency; the reasoning is in
 the relevant guides.
 
@@ -125,7 +138,7 @@ The quickest look at a running system:
 make dash
 ```
 
-Then **http://127.0.0.1:8080/dashboard/** — note the path; `/` is the landing page.
+Then **http://127.0.0.1:8080/dashboard/**. Note the path; `/` is the landing page.
 
 No keystore means no credential required, and the listener is loopback-only.
 
@@ -141,7 +154,7 @@ dune exec bin/keyctl.exe -- add --label viewer --scopes read
 dune exec bin/keyctl.exe -- list
 ```
 
-Keys land in `$XDG_CONFIG_HOME/algostream/keys.json` (`~/.config/...`), mode `0600` — the daemon
+Keys land in `$XDG_CONFIG_HOME/algostream/keys.json` (`~/.config/...`), mode `0600`. The daemon
 **refuses to start** if the permissions are wider, rather than warning.
 
 ```bash
@@ -159,7 +172,7 @@ Directly:
 
 ```bash
 KEY='ask_...'
-curl -s  localhost:8080/api/health | jq         # public — shows auth_required
+curl -s  localhost:8080/api/health | jq         # public; shows auth_required
 curl -i  localhost:8080/api/telemetry           # 401 + WWW-Authenticate
 curl -i -XPOST -H "Authorization: Bearer $KEY" localhost:8080/api/strategies/pairs-1/stop
 ```
@@ -175,7 +188,7 @@ dune exec bin/auditctl.exe -- verify /tmp/algostream-audit   # exit 1 on a break
 dune exec bin/auditctl.exe -- head   /tmp/algostream-audit
 ```
 
-`head` prints the **anchor** — copy it somewhere the daemon cannot write. The chain is unkeyed, so
+`head` prints the **anchor**. Copy it somewhere the daemon cannot write. The chain is unkeyed, so
 anyone who can write the log can recompute it and hand you a file that verifies perfectly. The
 [security guide](docs/guides/security.md) shows how to demonstrate that, and what an anchor buys you.
 
@@ -189,7 +202,7 @@ make stack-down
 ```
 
 Scope-gated like every other observation endpoint. Grafana `:3000` (anonymous viewer), Prometheus
-`:9090`, Alertmanager `:9093` — all bound to loopback.
+`:9090`, Alertmanager `:9093`, all bound to loopback.
 
 ## Documentation
 
@@ -235,7 +248,7 @@ make k8s-validate
 # Performance benchmarks (release profile)
 make bench           # text output
 make bench-json      # JSON output for github-action-benchmark
-make paced-bench     # latency at a stated offered load — the figure to quote
+make paced-bench     # latency at a stated offered load; the figure to quote
 ```
 
 ## Deployment
@@ -251,8 +264,8 @@ make stack-up                  # daemon + Prometheus + Grafana + Alertmanager
 make stack-down
 ```
 
-`Dockerfile` (root) is the release image. `Dockerfile.dev` is a **profiling shell** — passwordless
-sudo, `SYS_ADMIN`, `seccomp:unconfined` — which is correct for running `perf` and valgrind and
+`Dockerfile` (root) is the release image. `Dockerfile.dev` is a **profiling shell** (passwordless
+sudo, `SYS_ADMIN`, `seccomp:unconfined`), which is correct for running `perf` and valgrind and
 disqualifying for anything unattended. Never derive one from the other.
 
 A container must bind `0.0.0.0`, since a pod's loopback is unreachable from outside its network
@@ -286,10 +299,10 @@ not make this a clustered system.
 
 ## Contributing
 
-Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the build setup, code style
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the build setup, code style
 and test expectations. Security issues should go through [SECURITY.md](SECURITY.md) rather than a
 public issue.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).

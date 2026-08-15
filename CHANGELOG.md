@@ -23,7 +23,7 @@ First public release.
 - **Order and risk management** — routing, sizing, execution-quality measurement, VaR and limits.
 - **Monte Carlo, optimization and performance** — path simulation, walk-forward analysis and
   return attribution.
-- **Live runtime** — a paper-trading runner driving the same strategy code as the backtester
+- **Live runtime** — a runner with simulated execution, driving the same strategy code as the backtester
   against a live feed, with `test/runtime/test_parity.exe` asserting the two produce identical
   results from one fixture.
 - **Telemetry and reporting** — metrics, health checks, alerting and report export.
@@ -36,9 +36,9 @@ First public release.
 
 ### Notes
 
-This is paper trading. There is no venue connectivity anywhere in the project — no exchange
-credentials, no request signing, no trading endpoint. Fills are simulated against live quotes by
-the same engine the backtester uses.
+Execution is simulated. There is no venue connectivity in this release: no exchange credentials,
+no request signing, no trading endpoint. Fills are simulated against live quotes by the same
+engine the backtester uses.
 
 Performance figures are stated in the README alongside the machine and the command that produced
 them. Targets that cannot be validated without a venue are marked as such where they appear,

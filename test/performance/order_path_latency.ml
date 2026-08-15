@@ -13,12 +13,12 @@
       tick observed → strategy decides → risk gate → position sizing → routing → fill admitted
     v}
 
-    {b The venue leg does not exist.} AlgoStream is paper trading — there is no connectivity to any
-    exchange, no order placement, no acknowledgement. So this answers the target only for the part
-    the project actually controls: from market data arriving to an order being handed to the fill
-    simulator. Real execution latency is dominated by the network round trip and the venue's
-    matching engine, neither of which is here. Quoting this figure as "order execution latency"
-    without that sentence would be dishonest, which is why the sentence is in the output.
+    {b The venue leg does not exist yet.} There is no connectivity to any exchange, no order
+    placement and no acknowledgement. So this answers the target only for the part the project
+    actually controls: from market data arriving to an order being handed to the fill simulator.
+    Real execution latency is dominated by the network round trip and the venue's matching engine,
+    neither of which is here. Quoting this figure as "order execution latency" without that sentence
+    would be dishonest, which is why the sentence is in the output.
 
     {1 Method}
 
@@ -196,7 +196,7 @@ let main () =
         \        is the p50/p99 figures. See docs/architecture/latency_optimization.md on GC.\n"
         (ms p999) (ms max_v) ;
     print_endline
-      "  scope: market data in → order admitted to the fill simulator. AlgoStream is paper trading,\n\
+      "  scope: market data in → order admitted to the fill simulator. Execution is simulated,\n\
       \         so the venue round trip and matching are not included and cannot be measured here." ;
 
     match json_path with

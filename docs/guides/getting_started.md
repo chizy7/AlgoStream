@@ -2,9 +2,9 @@
 
 Building AlgoStream, running the tests, and getting a live dashboard in front of you.
 
-**AlgoStream is paper trading.** There is no venue connectivity anywhere in the project — no
-credentials, no request signing, no trading endpoint. Every fill is simulated against live quotes.
-Nothing in this guide, or anywhere else, will place a real order.
+**Execution is simulated.** There is no venue connectivity in this project today: no credentials,
+no request signing, no trading endpoint. Every fill is simulated against live quotes. Nothing in
+this guide, or anywhere else, will place a real order.
 
 ## Prerequisites
 

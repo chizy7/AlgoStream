@@ -2,9 +2,9 @@
 
 ## Scope
 
-AlgoStream is **paper-trading research infrastructure**. There is no venue connectivity anywhere in
-the project — no exchange credentials, no request signing, no trading endpoint — so no vulnerability
-here can move funds. What the security model protects is the **control surface and the data**: the
+AlgoStream is **research infrastructure with simulated execution**. There is no venue connectivity
+in the project today (no exchange credentials, no request signing, no trading endpoint), so no
+vulnerability here can currently move funds. What the security model protects is the **control surface and the data**: the
 dashboard API can start, pause, stop and reallocate strategies, and it serves live position and P&L
 figures.
 
