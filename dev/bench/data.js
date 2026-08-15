@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1786830882381,
+  "lastUpdate": 1786834700309,
   "repoUrl": "https://github.com/chizy7/AlgoStream",
   "entries": {
     "Benchmark": [
@@ -348,6 +348,354 @@ window.BENCHMARK_DATA = {
             "value": 1807342,
             "unit": "ns",
             "extra": "speedup=2.58x"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "32227554+chizy7@users.noreply.github.com",
+            "name": "Chizy",
+            "username": "chizy7"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "e5ed97ad5252f6be7746ae7328a0ec6625f9f24e",
+          "message": "Merge pull request #6 from chizy7/docs/simulated-execution-framing\n\ndocs: updating to align with oss and not internal",
+          "timestamp": "2026-08-15T18:54:04-04:00",
+          "tree_id": "a88bf091e709197c20af6bd005e7dbabe6d76bda",
+          "url": "https://github.com/chizy7/AlgoStream/commit/e5ed97ad5252f6be7746ae7328a0ec6625f9f24e"
+        },
+        "date": 1786834697820,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Monotonic Clock",
+            "value": 132,
+            "unit": "ns",
+            "extra": "p95=61ns p99=61ns iter=10000"
+          },
+          {
+            "name": "Realtime Clock",
+            "value": 80,
+            "unit": "ns",
+            "extra": "p95=61ns p99=61ns iter=10000"
+          },
+          {
+            "name": "Ring Buffer Push",
+            "value": 66,
+            "unit": "ns",
+            "extra": "p95=80ns p99=80ns iter=10000"
+          },
+          {
+            "name": "Ring Buffer Pop",
+            "value": 106,
+            "unit": "ns",
+            "extra": "p95=80ns p99=80ns iter=10000"
+          },
+          {
+            "name": "SPSC Queue Enqueue",
+            "value": 59,
+            "unit": "ns",
+            "extra": "p95=31ns p99=31ns iter=10000"
+          },
+          {
+            "name": "SPSC Queue Dequeue",
+            "value": 53,
+            "unit": "ns",
+            "extra": "p95=31ns p99=31ns iter=10000"
+          },
+          {
+            "name": "Fast Inverse Square Root",
+            "value": 38,
+            "unit": "ns",
+            "extra": "p95=40ns p99=40ns iter=10000"
+          },
+          {
+            "name": "Fast Logarithm",
+            "value": 46,
+            "unit": "ns",
+            "extra": "p95=60ns p99=60ns iter=10000"
+          },
+          {
+            "name": "Fast Exponential",
+            "value": 51,
+            "unit": "ns",
+            "extra": "p95=51ns p99=51ns iter=10000"
+          },
+          {
+            "name": "Critical Path: Timestamp Generation",
+            "value": 66,
+            "unit": "ns",
+            "extra": "p95=61ns p99=61ns iter=100000"
+          },
+          {
+            "name": "Critical Path: Ring Buffer Operations",
+            "value": 1527,
+            "unit": "ns",
+            "extra": "p95=601ns p99=601ns iter=100000"
+          },
+          {
+            "name": "Critical Path: Math Operations",
+            "value": 42,
+            "unit": "ns",
+            "extra": "p95=40ns p99=40ns iter=100000"
+          },
+          {
+            "name": "event_bus.saturated_queueing.avg",
+            "value": 6213509,
+            "unit": "ns",
+            "extra": "n=50000"
+          },
+          {
+            "name": "event_bus.saturated_queueing.p50",
+            "value": 7518107,
+            "unit": "ns",
+            "extra": "n=50000"
+          },
+          {
+            "name": "event_bus.saturated_queueing.p95",
+            "value": 9048708,
+            "unit": "ns",
+            "extra": "n=50000"
+          },
+          {
+            "name": "event_bus.saturated_queueing.p99",
+            "value": 9117169,
+            "unit": "ns",
+            "extra": "n=50000"
+          },
+          {
+            "name": "event_bus.throughput.ns_per_event",
+            "value": 448,
+            "unit": "ns",
+            "extra": "n=200000 throughput=2230095 ev/s"
+          },
+          {
+            "name": "ingestion.binance.ns_per_event",
+            "value": 2576,
+            "unit": "ns",
+            "extra": "throughput=388111 ev/s"
+          },
+          {
+            "name": "ingestion.coinbase.ns_per_event",
+            "value": 2694,
+            "unit": "ns",
+            "extra": "throughput=371131 ev/s"
+          },
+          {
+            "name": "ingestion.binance.alloc_bytes_per_event",
+            "value": 1699.3,
+            "unit": "B",
+            "extra": "words=212.4"
+          },
+          {
+            "name": "ingestion.coinbase.alloc_bytes_per_event",
+            "value": 2307.3,
+            "unit": "B",
+            "extra": "words=288.4"
+          },
+          {
+            "name": "analytics.direct.ns_per_event",
+            "value": 30596,
+            "unit": "ns",
+            "extra": "throughput=32684 ev/s"
+          },
+          {
+            "name": "analytics.bus.ns_per_event",
+            "value": 31267,
+            "unit": "ns",
+            "extra": "published=50000 processed=47508"
+          },
+          {
+            "name": "time_series.bar_builder.ns_per_tick",
+            "value": 14,
+            "unit": "ns",
+            "extra": "throughput=69590832 tick/s bars=1000"
+          },
+          {
+            "name": "time_series.compress.float_bytes_per_value",
+            "value": 9,
+            "unit": "B",
+            "extra": "ratio=1.12"
+          },
+          {
+            "name": "time_series.compress.int64_bytes_per_value",
+            "value": 3.79,
+            "unit": "B",
+            "extra": "ratio=0.47"
+          },
+          {
+            "name": "pairs.direct.ns_per_event",
+            "value": 769,
+            "unit": "ns",
+            "extra": "throughput=1299888 ev/s"
+          },
+          {
+            "name": "pairs.bus.ns_per_event",
+            "value": 1310,
+            "unit": "ns",
+            "extra": "published=100000 processed=90002"
+          },
+          {
+            "name": "adv.kalman_hedge.ns_per_event",
+            "value": 60,
+            "unit": "ns",
+            "extra": "throughput=16664274 ev/s"
+          },
+          {
+            "name": "adv.garch11.ns_per_event",
+            "value": 21,
+            "unit": "ns",
+            "extra": "throughput=46791848 ev/s"
+          },
+          {
+            "name": "adv.pca.fit_ms",
+            "value": 1.11,
+            "unit": "ms",
+            "extra": "features=32 samples=500"
+          },
+          {
+            "name": "oms.routing.ns_per_event",
+            "value": 449,
+            "unit": "ns",
+            "extra": "throughput=2223537 ev/s"
+          },
+          {
+            "name": "oms.book_impact.ns_per_event",
+            "value": 20,
+            "unit": "ns",
+            "extra": "throughput=49882134 ev/s"
+          },
+          {
+            "name": "oms.kelly.ns_per_event",
+            "value": 18,
+            "unit": "ns",
+            "extra": "throughput=53597786 ev/s"
+          },
+          {
+            "name": "risk.var_parametric.ns_per_event",
+            "value": 5047,
+            "unit": "ns",
+            "extra": "throughput=198133 ev/s"
+          },
+          {
+            "name": "risk.var_historical.ns_per_event",
+            "value": 29518,
+            "unit": "ns",
+            "extra": "throughput=33877 ev/s"
+          },
+          {
+            "name": "risk.drawdown.ns_per_event",
+            "value": 12,
+            "unit": "ns",
+            "extra": "throughput=79812482 ev/s"
+          },
+          {
+            "name": "risk.monitor.ns_per_event",
+            "value": 12235,
+            "unit": "ns",
+            "extra": "throughput=81727 ev/s"
+          },
+          {
+            "name": "sto.rng_uniform.ns_per_draw",
+            "value": 18,
+            "unit": "ns",
+            "extra": "throughput=52664631 draws/s"
+          },
+          {
+            "name": "sto.rng_int_below.ns_per_draw",
+            "value": 21,
+            "unit": "ns",
+            "extra": "throughput=47435842 draws/s"
+          },
+          {
+            "name": "sto.variate_normal.ns_per_draw",
+            "value": 74,
+            "unit": "ns",
+            "extra": "throughput=13444263 draws/s"
+          },
+          {
+            "name": "sto.rng_substream.ns_per_stream",
+            "value": 32,
+            "unit": "ns",
+            "extra": "throughput=31073549 streams/s"
+          },
+          {
+            "name": "bt.frictionless.ns_per_event",
+            "value": 1140,
+            "unit": "ns",
+            "extra": "throughput=876668 ev/s"
+          },
+          {
+            "name": "bt.spread_fees.ns_per_event",
+            "value": 1110,
+            "unit": "ns",
+            "extra": "throughput=900344 ev/s"
+          },
+          {
+            "name": "bt.book_walk.ns_per_event",
+            "value": 1017,
+            "unit": "ns",
+            "extra": "throughput=983085 ev/s"
+          },
+          {
+            "name": "metrics.of_nav.ns_per_call",
+            "value": 4677662,
+            "unit": "ns",
+            "extra": "5000 points, 214 calls/s"
+          },
+          {
+            "name": "metrics.drawdown_episodes.ns_per_call",
+            "value": 13734,
+            "unit": "ns",
+            "extra": "5000 points"
+          },
+          {
+            "name": "metrics.benchmark_compare.ns_per_call",
+            "value": 129677,
+            "unit": "ns",
+            "extra": "5000 points"
+          },
+          {
+            "name": "telemetry.histogram.record",
+            "value": 16,
+            "unit": "ns",
+            "extra": "iter=2000000"
+          },
+          {
+            "name": "telemetry.histogram.percentile",
+            "value": 299,
+            "unit": "ns",
+            "extra": "iter=2000000"
+          },
+          {
+            "name": "telemetry.bus.publish_with_collector",
+            "value": 373,
+            "unit": "ns",
+            "extra": "iter=2000000"
+          },
+          {
+            "name": "telemetry.collector.snapshot",
+            "value": 3515,
+            "unit": "ns",
+            "extra": "iter=2000000"
+          },
+          {
+            "name": "mc.path_level_1domain.ns_per_run",
+            "value": 773421,
+            "unit": "ns",
+            "extra": "1293 runs/s"
+          },
+          {
+            "name": "mc.path_level_8domain.ns_per_run",
+            "value": 1616754,
+            "unit": "ns",
+            "extra": "speedup=2.72x"
           }
         ]
       }
