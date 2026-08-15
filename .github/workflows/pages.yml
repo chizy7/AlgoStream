@@ -33,10 +33,10 @@ jobs:
 
     steps:
     - name: Checkout main
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Checkout gh-pages
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         ref: gh-pages
         path: out

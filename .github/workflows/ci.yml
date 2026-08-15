@@ -22,7 +22,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Use OCaml ${{ matrix.ocaml-compiler }}
       uses: ocaml/setup-ocaml@v3
@@ -63,7 +63,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Use OCaml 5.1.x
       uses: ocaml/setup-ocaml@v3
@@ -175,7 +175,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Use OCaml 5.1.x
       uses: ocaml/setup-ocaml@v3
@@ -204,7 +204,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Security lints
       # A script rather than inline greps, because every construct these ban is *named in the
@@ -229,7 +229,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     # The documentation pages are generated from docs/guides/*.md. Build
     # them here so a parser regression fails the PR instead of reaching
