@@ -2,9 +2,9 @@
 
 What AlgoStream is made of and how the pieces fit together.
 
-**Scope.** This is paper-trading research infrastructure. There is no venue connectivity anywhere in
-the project — no exchange credentials, no request signing, no trading endpoint. Fills are simulated
-against live quotes.
+**Scope.** This is research infrastructure with simulated execution. There is no venue connectivity
+in the project today: no exchange credentials, no request signing, no trading endpoint. Fills are
+simulated against live quotes.
 
 ## Shape
 
