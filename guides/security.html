@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Security — AlgoStream</title>
+  <meta name="description" content="How the dashboard API is protected, what the threat model actually is, and the two places where this project deliberately does less than you might expect.">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Security — AlgoStream">
+  <meta property="og:description" content="How the dashboard API is protected, what the threat model actually is, and the two places where this project deliberately does less than you might expect.">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">security</span>
+      </div>
+      <div class="group">
+        <span>operations</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Operations</p>
+        <h1><span class="accent">security</span></h1>
+        <p class="lede">How the dashboard API is protected, what the threat model actually is, and the two places where this project deliberately does less than you might expect.</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/infrastructure/auth/</span><span><span class="k">scope</span>control surface — not money</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/security.md" rel="noopener">security.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#the-threat-model-stated-plainly">The threat model, stated plainly</a></li><li><a href="#why-there-is-no-cookie-session">Why there is no cookie session</a></li><li><a href="#keys">Keys</a></li><li><a href="#the-event-stream">The event stream</a></li><li><a href="#binding-to-a-network">Binding to a network</a></li><li><a href="#the-audit-trail">The audit trail</a></li><li><a href="#what-is-out-of-scope">What is out of scope</a></li></ol>
+        </nav>
+        <article class="prose">
+          <section class="intro"><p>Everything here concerns the <strong>control surface and the data</strong>, not money. There is no venue connectivity anywhere in AlgoStream — no credentials, no request signing, no trading endpoint — so no key described below can move a position anywhere but in a simulation.</p></section>
+          <section id="the-threat-model-stated-plainly"><h2><span class="num">01</span>The threat model, stated plainly</h2><p>Security decisions only make sense against a named adversary, so here are the five that were considered and what happens to each.</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>#</th><th>Adversary</th><th>In scope</th><th>Why</th></tr></thead><tbody><tr><td>1</td><td>Another local user account on a shared machine</td><td><strong>Yes</strong></td><td>The keystore is <code>0600</code> and the daemon refuses to start if it is not</td></tr><tr><td>2</td><td>A process running as the same uid</td><td>No</td><td>It can read the keystore, <code>ptrace</code> the daemon and read <code>/proc/net/tcp</code>. No HTTP-layer mechanism helps</td></tr><tr><td>3</td><td><strong>A web page the operator visits in another tab</strong></td><td><strong>Yes — and it drove the design</strong></td><td>See below</td></tr><tr><td>4</td><td>The network</td><td><strong>Yes</strong></td><td>A non-loopback bind without a keystore is refused outright</td></tr><tr><td>5</td><td>A passive observer of loopback traffic</td><td>No</td><td>Requires root or <code>CAP_NET_RAW</code>, i.e. already adversary 2</td></tr></tbody></table></div></div><p><strong>Adversary 3 is the one that matters most, and it is the one people expect loopback binding to handle.</strong> It does not. Loopback binding alone does not stop a page you have open in another tab from issuing:</p><div class="code" data-label="js"><pre><code>fetch('http://127.0.0.1:8080/api/strategies/pairs-1/stop', { method: 'POST' })</code></pre></div><p>CORS stops that page <em>reading</em> the response. It does not stop the side effect landing. Binding to loopback provides no defence at all, because the request originates from your own browser.</p></section><section id="why-there-is-no-cookie-session"><h2><span class="num">02</span>Why there is no cookie session</h2><p>The fix is that <code>Authorization: Bearer</code> is the <strong>only</strong> accepted credential channel.</p><p>A cross-origin <code>fetch</code> that sets <code>Authorization</code> is no longer a CORS "simple request", so the browser sends a preflight <code>OPTIONS</code> first. AlgoStream sends no <code>Access-Control-Allow-*</code> headers, the preflight fails, and the real request is never issued. A request <em>without</em> the header is rejected with 401.</p><p>That is a complete CSRF defence with no CSRF machinery — no synchroniser tokens, no double-submit, no <code>SameSite</code> reasoning, no per-browser cookie-prefix quirks.</p><p><strong>A cookie session would throw all of it away.</strong> Browsers attach cookies automatically, including on a cross-site POST, so it would reintroduce exactly the attack the bearer header rules out. The server also checks the <code>Origin</code> header on <code>POST</code>/<code>PUT</code> as belt and braces, so the door stays shut even if a browser mishandles preflight.</p></section><section id="keys"><h2><span class="num">03</span>Keys</h2><div class="code" data-label="output"><pre><code>ask_&lt;8 hex&gt;_&lt;52 base32 chars, alphabet a-z2-7&gt;
+└┬─┘└──┬───┘└───────────────┬────────────────┘
+ │     │                    └ 256 bits from the OS CSPRNG, base32
+ │     └ key id. PUBLIC — appears in audit records and log lines
+ └ fixed prefix, so secret scanners can find it (they do — see below)</code></pre></div><p>The segments above are <strong>placeholders, not a sample.</strong> A realistic-looking string here trips secret scanners on every pull request, and a reader skimming the format should never have to wonder whether they are looking at a live credential.</p><div class="code" data-label="bash"><pre><code>algostream-keyctl add --label "laptop dashboard" --scopes read,control
+algostream-keyctl list</code></pre></div><p>The key is printed <strong>once</strong>. Only <code>sha256:&lt;hex&gt;</code> is stored; a lost key is regenerated, not recovered.</p><h3>Why plain SHA-256 and not argon2</h3><p>This is the decision most likely to be questioned, so: the stored value is unsalted, uniterated SHA-256, and that is correct <em>here</em> while being wrong for passwords. The difference is the input distribution.</p><p>A password KDF exists to make each <strong>guess</strong> expensive, because the guess space is small enough to enumerate. The input here is 256 bits of CSPRNG output — no dictionary, no reuse across sites, nothing memorable to exploit. Stretching it would add latency to every request and make no attack harder. This is the same reasoning behind treating a personal access token differently from a password. A pepper was considered and rejected: it would live in the same file as the hashes.</p><p>Comparison uses <code>Digestif.SHA256.equal</code>, which is constant-time. <code>unsafe_compare</code>, one line above it in the same interface, is documented as leaking and is banned under <code>lib/infrastructure/auth/</code> by a CI lint.</p><h3>Scopes</h3><p>Two, plus <code>public</code>:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Scope</th><th>Covers</th></tr></thead><tbody><tr><td><code>read</code></td><td>telemetry, strategies, positions, P&amp;L, reports, the event stream, <code>/metrics</code></td></tr><tr><td><code>control</code></td><td>pause, resume, stop, reallocate</td></tr></tbody></table></div></div><p><code>control</code> implies <code>read</code>. Every route declares its requirement as a <strong>mandatory</strong> field, so a new endpoint that forgets to declare one fails to compile — with a default, the failure mode is an endpoint silently inheriting <code>read</code>, and the next control endpoint added is exactly where silence would be expensive.</p><p>Per-resource scoping (<code>control:pairs-1</code>) was considered and rejected: it is the right shape for a multi-tenant service with many operators, and this is one operator watching one process.</p><h3>Rotation and revocation</h3><p>Rotation is an overlap window and nothing else:</p><div class="code" data-label="bash"><pre><code>algostream-keyctl add --label "operator 2026-08" --scopes read,control
+algostream-keyctl expire --kid OLDKID --in 24h</code></pre></div><p>Both keys authenticate until the clock passes the expiry, so there is no moment where neither works. Audit records keep whichever key id was actually used, so the changeover stays legible afterwards.</p><div class="code" data-label="bash"><pre><code>algostream-keyctl revoke --kid OLDKID</code></pre></div><p>Revocation takes effect <strong>within one second</strong> — the daemon re-<code>stat</code>s the keystore at most once a second and reloads on change. Open event streams are dropped on the next push tick, because a long-lived stream was authorised once at open and would otherwise outlive its credential.</p><p>If a reload <em>fails</em> — someone hand-edited the JSON — the daemon keeps serving the last good keystore and logs an error. Locking an operator out of a running trading system over a stray comma is worse than a one-second-stale policy. That is the one place this design does not fail closed, and it is deliberate.</p><h3>The keystore file</h3><p>Loading <strong>refuses</strong>, never warns, when the file is group- or world-readable, is owned by another user, or sits in a world-writable directory. A daemon that runs detached is a daemon whose warnings nobody reads.</p></section><section id="the-event-stream"><h2><span class="num">04</span>The event stream</h2><p><code>EventSource</code> cannot set request headers, so <code>/events</code> cannot use a bearer token. It uses a single-use ticket instead:</p><div class="code" data-label="output"><pre><code>POST /api/stream-ticket   (Authorization: Bearer …)  -&gt;  { "ticket": "...", "expires_in_s": 30 }
+GET  /events?ticket=...</code></pre></div><p>128 bits, single use, 30-second TTL, bound to the minting key's id and scopes, stored as a digest. Every property exists to make carrying it in a URL not matter: replaying one out of a screenshot of the network panel is useless.</p><p>The API key itself is never put in a query string.</p></section><section id="binding-to-a-network"><h2><span class="num">05</span>Binding to a network</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th><code>--http-host</code></th><th>keystore</th><th>Result</th></tr></thead><tbody><tr><td>loopback</td><td>present</td><td>Normal</td></tr><tr><td>loopback</td><td>absent</td><td>Runs unauthenticated with a warning — preserves <code>make dash</code> and the demo</td></tr><tr><td>non-loopback</td><td>absent</td><td><strong>Exit 2.</strong> No warning</td></tr><tr><td>non-loopback</td><td>present</td><td><strong>Exit 2</strong> unless <code>--insecure-plaintext-bind</code></td></tr></tbody></table></div></div><p>That last flag is named to read badly in shell history. That is the point.</p><h3>Inbound TLS is deliberately not implemented</h3><p>Serving HTTPS directly would be a net security <strong>decrease</strong>. On loopback it defends only against an attacker who already has root — i.e. one who can read the keystore anyway — while adding a self-signed certificate interstitial that trains the operator to click through TLS warnings. Worse, <code>EventSource</code> to an origin with a certificate error fails outright with no way for the page to prompt, so the dashboard would silently fall back to polling.</p><p>Where TLS genuinely matters is a non-loopback bind, and there the right answer is a reverse proxy with a real certificate:</p><div class="code" data-label="nginx"><pre><code>location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header Authorization $http_authorization;
+
+    # Required. SSE through a buffering proxy delivers nothing until the buffer fills,
+    # which for a 4 Hz stream looks exactly like a hung dashboard.
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+}</code></pre></div><p>Audit records will show the proxy's address as the peer. <code>X-Forwarded-For</code> is not trusted and not parsed — a trusted-proxy list is configuration that has to be right to be safe, and getting it wrong means an attacker choosing what the audit log records about them.</p></section><section id="the-audit-trail"><h2><span class="num">06</span>The audit trail</h2><p>Every control action is recorded with attribution: which key, from which peer, against which route, with what body, and whether it was allowed.</p><div class="code" data-label="bash"><pre><code>algostream-auditctl tail /var/lib/algostream/audit
+algostream-auditctl verify /var/lib/algostream/audit
+algostream-auditctl head /var/lib/algostream/audit</code></pre></div><p>Records are chained: <code>hash_n = SHA-256(hash_(n-1) || canonical_n)</code>. Any modification invalidates every hash after it.</p><p><strong>What the chain does not do, and this matters.</strong> It is unkeyed, so anyone who can write the file can recompute every hash from the point they changed onward and hand you a file that verifies perfectly. Tail truncation is therefore invisible, and so is a wholesale rewrite.</p><p>So the guarantee is narrower than "tamper-proof", and worth stating precisely: <strong>any change to the log moves the head hash.</strong> That is what makes it evidence — and it is only evidence if you have recorded the head somewhere the daemon cannot write:</p><div class="code" data-label="bash"><pre><code>algostream-auditctl head /var/lib/algostream/audit    # copy this off the machine</code></pre></div><p>You can watch it fail for yourself, against a scratch audit directory:</p><div class="code" data-label="bash"><pre><code>make backup DIR=/tmp/algostream-audit
+truncate -s -200 /tmp/algostream-audit/audit-*.log            # lop off the tail
+dune exec bin/auditctl.exe -- verify /tmp/algostream-audit    # still reports "chain intact"</code></pre></div><p><code>scripts/backup.sh</code> writes the anchor beside each archive, and <code>restore.sh --anchor</code> compares against it — that is what catches the truncation above. A cleanly truncated log reports "chain intact" and the anchor catches it anyway; there is a test asserting exactly that, so the limitation cannot quietly be forgotten.</p><p>HMAC-chaining with a secret was considered and rejected: the key would live on the machine the attacker owns.</p><p><strong>This is not certified</strong> against MiFID II, SEC 17a-4, or any other regime. It is a defensible record of control actions, not a compliance claim.</p></section><section id="what-is-out-of-scope"><h2><span class="num">07</span>What is out of scope</h2><ol><li><strong>A process running as your uid.</strong> It reads the keystore directly.</li><li><strong>Audit tail truncation</strong>, without an out-of-band anchor. Impossible locally.</li><li><strong>Per-resource scopes.</strong> One operator, one instance.</li><li><strong>Users, roles, password login.</strong> An API key is the right primitive here.</li><li><strong>Encrypting the keystore at rest.</strong> It holds hashes; there is nothing further to protect.</li><li><strong><code>X-Forwarded-For</code> trust.</strong> See above.</li><li><strong>Shipping audit records to a remote sink.</strong> Local file plus <code>auditctl</code>.</li></ol></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="performance-tuning.html"><span class="dir">← previous</span><span>Performance Tuning</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="deployment.html"><span class="dir">next →</span><span>Deployment</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">security</span>
+│ keys are shown once; only sha256 is stored
+│ inbound TLS is a deliberate deferral — see the guide
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        operations · 7 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

@@ -1,0 +1,514 @@
+/* ═══════════════════════════════════════════════════════════════════
+   AlgoStream — documentation pages
+   Layered on top of algostream.css. Adds prose, code, tables,
+   diagrams and the sticky table of contents.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ───── layout ───────────────────────────────────────────────── */
+.doc {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  gap: 56px;
+  align-items: start;
+  padding: 8px 0 24px;
+}
+
+/* ───── table of contents ────────────────────────────────────── */
+.toc {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  animation: fade 0.6s ease-out 0.25s both;
+}
+.toc-label {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin: 0 0 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: toc;
+}
+.toc li { margin: 0 0 2px; }
+.toc a {
+  display: flex;
+  gap: 10px;
+  padding: 5px 8px 5px 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--muted);
+  text-decoration: none;
+  border-left: 1px solid transparent;
+  padding-left: 12px;
+  margin-left: -1px;
+  transition: color .18s ease, border-color .18s ease;
+}
+.toc a::before {
+  counter-increment: toc;
+  content: counter(toc, decimal-leading-zero);
+  color: var(--dim);
+  font-size: 10px;
+  flex: none;
+}
+.toc a:hover { color: var(--cream); border-left-color: var(--border-hi); }
+.toc a.active { color: var(--amber); border-left-color: var(--amber); }
+.toc a.active::before { color: var(--amber-deep); }
+
+/* ───── page header ──────────────────────────────────────────── */
+.guide-head { animation: rise 0.6s cubic-bezier(.2,.8,.2,1) 0.12s both; }
+.guide-head .eyebrow {
+  display: inline-flex; align-items: center; gap: 14px;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin: 0 0 20px;
+}
+.guide-head .eyebrow::before {
+  content: ""; width: 28px; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--amber));
+}
+.guide-head h1 {
+  font-size: clamp(34px, 5vw, 56px);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 0.95;
+  margin: 0 0 20px;
+  color: var(--cream);
+  text-shadow: 0 0 32px rgba(255,162,26,0.06);
+}
+.guide-head h1 .accent { color: var(--amber); }
+.guide-head .lede {
+  max-width: 66ch;
+  font-size: 15.5px;
+  line-height: 1.62;
+  color: var(--cream);
+  margin: 0 0 24px;
+}
+.guide-meta {
+  display: flex; flex-wrap: wrap; gap: 10px 22px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.guide-meta a { color: var(--muted); text-decoration: none; }
+.guide-meta a:hover { color: var(--amber); }
+.guide-meta .k { color: var(--dim); margin-right: 8px; }
+
+/* ───── prose ────────────────────────────────────────────────── */
+.prose { min-width: 0; animation: fade 0.6s ease-out 0.3s both; }
+
+.prose section { scroll-margin-top: 24px; padding-top: 46px; }
+
+.prose h2 {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--cream);
+  margin: 0 0 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: baseline; gap: 14px;
+}
+.prose h2 .num {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: var(--amber-deep);
+  flex: none;
+}
+.prose h3 {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--amber-dim);
+  margin: 28px 0 12px;
+}
+
+.prose p, .prose li {
+  font-size: 14.5px;
+  line-height: 1.68;
+  color: #C9C4B8;
+  max-width: 72ch;
+}
+.prose p { margin: 0 0 16px; }
+.prose strong { color: var(--cream); font-weight: 600; }
+.prose em { color: var(--cream); font-style: italic; }
+
+.prose ul, .prose ol { margin: 0 0 18px; padding-left: 22px; }
+.prose li { margin-bottom: 9px; }
+.prose ul { list-style: none; padding-left: 0; }
+.prose ul > li {
+  position: relative;
+  padding-left: 22px;
+}
+.prose ul > li::before {
+  content: "";
+  position: absolute;
+  left: 2px; top: 0.62em;
+  width: 6px; height: 6px;
+  border-top: 1px solid var(--amber);
+  border-right: 1px solid var(--amber);
+  transform: rotate(45deg);
+}
+.prose ol { counter-reset: step; list-style: none; padding-left: 0; }
+.prose ol > li {
+  position: relative;
+  padding-left: 34px;
+  margin-bottom: 16px;
+}
+.prose ol > li::before {
+  counter-increment: step;
+  content: counter(step);
+  position: absolute; left: 0; top: 0.1em;
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  font-size: 10.5px;
+  color: var(--amber);
+  border: 1px solid var(--border-hi);
+  background: var(--surface);
+}
+
+.prose a:not(.btn) {
+  color: var(--amber);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(255,162,26,0.28);
+  transition: border-color .18s ease;
+}
+.prose a:not(.btn):hover { border-bottom-color: var(--amber); }
+
+/* inline code */
+.prose code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  color: var(--amber-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  overflow-wrap: anywhere;
+}
+
+/* ───── code blocks ──────────────────────────────────────────── */
+.code {
+  position: relative;
+  margin: 0 0 22px;
+  background: var(--surface);
+  border: 1px solid var(--border-hi);
+  box-shadow: 0 0 0 1px var(--bg), 0 24px 48px -28px rgba(0,0,0,0.7);
+}
+/* Language tag in the corner rather than a header bar — generated pages
+   have no meaningful title to put on the left. */
+.code::before {
+  content: attr(data-label);
+  position: absolute;
+  top: 0; right: 0;
+  padding: 7px 13px;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--amber-deep);
+  pointer-events: none;
+}
+.code pre {
+  margin: 0;
+  padding: 26px 14px 16px;
+  overflow-x: auto;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: #C9C4B8;
+  letter-spacing: 0;
+}
+.code pre code {
+  background: none; border: none; padding: 0;
+  color: inherit; font-size: inherit;
+}
+
+/* OCaml token colours */
+.tok-cmt { color: var(--dim); font-style: italic; }
+.tok-str { color: var(--live); }
+.tok-kw  { color: var(--amber); }
+.tok-mod { color: #8FB8D8; }
+.tok-lbl { color: var(--amber-dim); }
+.tok-num { color: #D8A0E0; }
+
+/* ───── callout ──────────────────────────────────────────────── */
+.callout {
+  margin: 0 0 22px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--amber);
+}
+.callout p { margin: 0; max-width: none; }
+.callout p + p { margin-top: 10px; }
+.callout .q {
+  display: block;
+  color: var(--amber);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+/* ───── tables ───────────────────────────────────────────────── */
+.tbl {
+  position: relative;
+  margin: 0 0 22px;
+  background: var(--surface);
+  border: 1px solid var(--border-hi);
+}
+.tbl-scroll { overflow-x: auto; }
+.tbl table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.tbl th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border-hi);
+  white-space: nowrap;
+}
+.tbl td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  color: #C9C4B8;
+  vertical-align: top;
+  line-height: 1.55;
+}
+.tbl tr:last-child td { border-bottom: none; }
+.tbl tbody tr:hover td { background: rgba(255,162,26,0.022); }
+.tbl td code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--amber-dim);
+  white-space: nowrap;
+}
+.tbl td:first-child { color: var(--cream); }
+
+/* ───── diagrams ─────────────────────────────────────────────── */
+.diagram {
+  margin: 0 0 22px;
+  background: var(--surface);
+  border: 1px solid var(--border-hi);
+}
+.diagram-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.diagram-body { overflow-x: auto; padding: 22px 16px; }
+.diagram svg { display: block; min-width: 620px; width: 100%; height: auto; }
+
+.d-group  { fill: none; stroke: var(--border-hi); stroke-dasharray: 3 4; }
+.d-glabel { fill: var(--muted); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; }
+.d-node   { fill: #16161B; stroke: var(--border-hi); }
+.d-node-a { fill: #1A1410; stroke: var(--amber-deep); }
+.d-title  { fill: var(--cream); font-size: 12px; font-weight: 600; }
+.d-sub    { fill: var(--muted); font-size: 10.5px; }
+.d-edge   { stroke: var(--amber); stroke-width: 1.2; fill: none; }
+.d-edge-q { stroke: var(--border-hi); stroke-width: 1.2; fill: none; }
+.d-elabel { fill: var(--amber-dim); font-size: 10px; letter-spacing: 0.04em; }
+.diagram text { font-family: var(--mono); }
+
+/* ───── state cards ──────────────────────────────────────────── */
+.states {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+  background: var(--surface);
+  border: 1px solid var(--border-hi);
+  margin: 0 0 22px;
+}
+.state {
+  padding: 15px 16px 13px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.state h4 {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--amber);
+}
+.state h4 .init {
+  color: var(--live);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  margin-left: 8px;
+}
+.state ul { list-style: none; margin: 0; padding: 0; }
+.state li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  padding: 7px 0;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--muted);
+  max-width: none;
+  margin: 0;
+}
+.state li::before { display: none; }
+.state li .to {
+  color: var(--cream);
+  white-space: nowrap;
+}
+.state li .to::before { content: "→ "; color: var(--amber-deep); }
+
+/* ───── footer nav ───────────────────────────────────────────── */
+.doc-nav {
+  display: flex; flex-wrap: wrap; gap: 12px;
+  margin-top: 46px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+/* ───── responsive ───────────────────────────────────────────── */
+@media (max-width: 980px) {
+  .doc { grid-template-columns: 1fr; gap: 24px; }
+  .toc {
+    position: static;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    padding: 14px 16px;
+  }
+  .toc ol {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 0 18px;
+  }
+  .prose section { padding-top: 34px; }
+}
+@media (max-width: 720px) {
+  .prose h2 { font-size: 18px; }
+  .guide-head h1 { font-size: clamp(28px, 8vw, 40px); }
+  .state { border-right: none; }
+}
+
+/* ───── h4 + rules ───────────────────────────────────────────── */
+.prose h4 {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--cream);
+  margin: 22px 0 10px;
+}
+.prose h4 strong, .prose h3 strong { font-weight: inherit; color: inherit; }
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 30px 0;
+}
+
+/* An unnumbered lead-in block: several guides open with a module table
+   above their first "## " heading. */
+.prose section.intro { padding-top: 18px; }
+
+/* ───── task lists ───────────────────────────────────────────── */
+.prose ul.task > li { padding-left: 30px; }
+.prose ul.task > li::before { display: none; }
+.prose ul.task .box {
+  position: absolute;
+  left: 0; top: 0.28em;
+  width: 15px; height: 15px;
+  display: grid; place-items: center;
+  font-size: 9px;
+  color: var(--dim);
+  border: 1px solid var(--border-hi);
+  background: var(--surface);
+}
+
+/* ───── prev / next ──────────────────────────────────────────── */
+.doc-nav .pn {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 12px 18px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  min-width: 0;
+}
+.doc-nav .pn .dir {
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.doc-nav .pn:hover .dir { color: var(--amber-deep); }
+
+/* ───── documentation index ──────────────────────────────────── */
+.gindex { display: grid; gap: 22px; }
+
+.gsec { animation: fade 0.5s ease-out both; }
+.gblurb {
+  margin: 0;
+  padding: 14px 16px 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 78ch;
+}
+
+.gcards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(258px, 1fr));
+  background: var(--surface);
+  margin-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.gcard {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 16px;
+  background: var(--surface);
+  text-decoration: none;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  transition: background-color .18s ease;
+  min-width: 0;
+}
+.gcard:hover { background: #16161B; }
+.gname {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--cream);
+  transition: color .18s ease;
+}
+.gcard:hover .gname { color: var(--amber); }
+.gphase {
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--amber-deep);
+}
+.gbits {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}

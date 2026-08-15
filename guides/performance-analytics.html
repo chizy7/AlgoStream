@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Performance Analytics — AlgoStream</title>
+  <meta name="description" content="lib/performance is the canonical home for risk-adjusted metrics. Six modules:">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Performance Analytics — AlgoStream">
+  <meta property="og:description" content="lib/performance is the canonical home for risk-adjusted metrics. Six modules:">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">performance analytics</span>
+      </div>
+      <div class="group">
+        <span>research</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Research</p>
+        <h1>performance <span class="accent">analytics</span></h1>
+        <p class="lede"><code>lib/performance</code> is the canonical home for risk-adjusted metrics. Six modules:</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/performance/</span><span><span class="k">covers</span>ratios · drawdown episodes · attribution</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/performance_analytics.md" rel="noopener">performance_analytics.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#the-consolidation-story">The consolidation story</a></li><li><a href="#conventions">Conventions</a></li><li><a href="#drawdown-episodes">Drawdown episodes</a></li><li><a href="#attribution-and-what-it-is-not">Attribution, and what it is not</a></li><li><a href="#event-time-invariant">Event-time invariant</a></li><li><a href="#tests-benchmarks">Tests + benchmarks</a></li></ol>
+        </nav>
+        <article class="prose">
+          <section class="intro"><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Module</th><th>Purpose</th></tr></thead><tbody><tr><td><code>Returns</code></td><td>equity curve → returns, and the annualization factor everything depends on</td></tr><tr><td><code>Metrics</code></td><td>Sharpe, Sortino, Calmar, Omega, Martin, VaR/CVaR, tail ratio — one record</td></tr><tr><td><code>Drawdown_analysis</code></td><td>drawdown <em>episodes</em> with recovery times</td></tr><tr><td><code>Benchmark_compare</code></td><td>alpha, beta, tracking error, information ratio, capture</td></tr><tr><td><code>Attribution</code></td><td>grouped P&amp;L contributions and the gross-to-net cost waterfall</td></tr></tbody></table></div></div><p>Pure functions over plain arrays. It does not depend on <code>algostream.backtest</code> — metrics stay usable against a live portfolio's fill history, and <code>Backtest.Result.to_perf_fills</code> adapts in the one direction that keeps the dependency acyclic.</p></section>
+          <section id="the-consolidation-story"><h2><span class="num">01</span>The consolidation story</h2><p>This is the reason the library exists in the form it does. The tree carries <strong>four</strong> max-drawdown implementations and <strong>three</strong> Sharpe implementations across <strong>three different formulas</strong>, two of them sharing a field name:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Site</th><th>Sharpe formula</th><th>Annualized?</th><th>Risk-free?</th></tr></thead><tbody><tr><td><code>Portfolio.Risk_metrics.calculate_risk_metrics</code></td><td><code>mean_return / volatility</code></td><td>no</td><td>no</td></tr><tr><td><code>Portfolio.Portfolio_analytics.calculate_performance_summary</code></td><td><code>total_return / volatility</code></td><td>no</td><td>no</td></tr><tr><td><code>Math_utils.FinancialMath.sharpe_ratio</code></td><td><code>(mean − rf) / stdev</code></td><td>no</td><td>yes</td></tr><tr><td><code>Pair.Pair_analytics</code></td><td><code>avg_trade_pnl / stdev_of_trade_pnl</code></td><td>no</td><td>no</td></tr></tbody></table></div></div><p>The first two report their different answers in a field called <code>sharpe_ratio</code>. The fourth is not return-based at all — it is a per-trade figure.</p><p>That fourth site was <strong>found by <code>make metrics-dup-lint</code> on its first run</strong>. The documentation before that said "three max-drawdown and two Sharpe implementations"; the lint disagreed and was right.</p><p>Nothing was deleted. <code>Portfolio.Risk_metrics</code> is load-bearing for <code>Risk_management.Var.Historical</code>, and the <code>Pair</code> functions, while dead, sit in a foundational module. The resolution is: one canonical implementation here, the legacy sites documented as superseded, and two durable guards —</p><ul><li><strong><code>make metrics-dup-lint</code></strong> (also a CI step) fails if a new Sharpe/Sortino/Calmar/max-drawdown definition appears outside <code>lib/performance</code>, with an explicit allowlist naming each legacy site and why it is there.</li><li><strong><code>test/performance_analytics/test_consolidation.ml</code></strong> asserts that max-drawdown <em>agrees</em> with <code>Portfolio.Risk_metrics</code>, and <strong>pins the disagreement</strong> between the two legacy Sharpes — so "fixing" one of them silently fails a test instead of quietly changing a number somebody relies on.</li></ul></section><section id="conventions"><h2><span class="num">02</span>Conventions</h2><p>These are stated because they are exactly where implementations silently disagree:</p><ul><li><strong>Volatility</strong>: sample standard deviation, <code>n−1</code> denominator.</li><li><strong>Downside deviation</strong>: <strong>full-sample <code>n</code></strong> denominator — observations above the MAR contribute zero rather than being excluded. This is the standard Sortino convention and the single largest source of disagreement between tools. A test asserts the smaller (correct) figure against the exclude-upside alternative.</li><li><strong>Annualization</strong>: mean × periods-per-year, standard deviation × √periods-per-year, via <code>Returns.periods_per_year</code>. Assumes serially independent returns; for a strongly autocorrelated series the annualized volatility is understated and no Newey-West correction is applied.</li><li><strong>Calendar</strong>: 24/7 by default (365 days), correct for the crypto feeds this platform ingests. Pass <code>~days_per_year:252</code> and <code>~hours_per_day:6.5</code> for session-traded instruments.</li><li><strong>Every ratio returns <code>0.0</code></strong>, never <code>nan</code> or <code>infinity</code>, when its denominator is zero. Which case produced the zero is recoverable from the component fields.</li><li><strong>VaR and CVaR delegate</strong> to <code>Risk_management.Var.compute ~method_:Historical</code>. There is no fourth VaR here, and a test asserts the delegation is exact.</li></ul></section><section id="drawdown-episodes"><h2><span class="num">03</span>Drawdown episodes</h2><p><code>Drawdown.Tracker</code> gives running scalars for live gating; <code>Portfolio.Risk_metrics.calculate_maximum_drawdown</code> gives one number. Neither can answer "how many drawdowns, how deep, and how long did each take to recover" — which distinguishes a strategy with one catastrophic 30% drawdown from one with ten shallow ones that recover in a day.</p><p>An episode runs peak → trough → recovery. The final episode may be unrecovered, in which case <code>recovery_ns</code> is <code>None</code> — reported honestly rather than closed at the sample end, which would understate the true recovery time.</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let eps = Drawdown_analysis.episodes ~nav () in
+Array.iter (fun e -&gt; print_endline (Drawdown_analysis.episode_to_string e))
+  (Drawdown_analysis.worst eps ~n:3)</code></pre></div><p><code>mean_recovery_ns</code> averages over <strong>recovered episodes only</strong>; folding in the unrecovered ones as though they had recovered at the sample end would bias the figure downward.</p></section><section id="attribution-and-what-it-is-not"><h2><span class="num">04</span>Attribution, and what it is not</h2><p><strong>This is not Brinson attribution.</strong> Brinson needs benchmark weights per group per period, a concept this system has no notion of. What ships is grouped P&amp;L contributions — by symbol, strategy, side, liquidity, regime, holding period — plus a gross-to-net cost waterfall. For a single-strategy statistical-arbitrage book that is the attribution that informs decisions; calling it Brinson would be a misrepresentation.</p><p><code>by_liquidity</code> is the one to read first on a high-turnover book: it answers whether the edge survives paying the taker fee.</p><p>Financing is spread across fills pro rata by notional in <code>Result.to_perf_fills</code>. Financing accrues on carried exposure, not on any one fill, so there is no correct per-fill attribution — the approximation is called out rather than presented as measured.</p></section><section id="event-time-invariant"><h2><span class="num">05</span>Event-time invariant</h2><p>Nothing here reads a clock; time enters as <code>int64</code> nanoseconds on the NAV curve. <code>make metrics-clock-lint</code> enforces it, and CI runs the same check.</p></section><section id="tests-benchmarks"><h2><span class="num">06</span>Tests + benchmarks</h2><div class="code" data-label="bash"><pre><code>dune runtest test/performance_analytics   # 59 tests across 6 suites
+make metrics-clock-lint &amp;&amp; make metrics-dup-lint
+make metrics-bench                        # Apple Silicon, 5,000-point curve:
+                                          #   of_nav ~4.0 ms, drawdown episodes ~19 us,
+                                          #   returns ~18 us, benchmark_compare ~128 us</code></pre></div><p><code>of_nav</code> is dominated by its two historical-VaR calls, and those by <code>Array.sort</code> — OCaml's polymorphic sort boxes every element of a flat <code>float array</code>, costing ~0.9 ms per sort. This library removed a redundant list conversion and a duplicate sort there (~1.5 ms → ~1.0 ms per VaR call); a monomorphic float sort would recover most of the remainder and is recorded as a follow-up in <code>Var.historical_var_es</code> rather than rushed in. The cost is bounded and known: the Monte Carlo path that actually runs 10,000 times uses ~1,000-point series at ~0.75 ms each.</p><p>Degenerate inputs are tested explicitly, because that is where metric libraries produce <code>nan</code> and poison a whole Monte Carlo batch: zero volatility, all-zero returns, an empty series, and a monotonically rising curve (where Calmar divides by a zero drawdown) must all yield finite fields.</p></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="monte-carlo.html"><span class="dir">← previous</span><span>Monte Carlo</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="optimization.html"><span class="dir">next →</span><span>Strategy Optimization</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ performance_analytics.md
+│ 6 sections · 2 tables · 2 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        research · 6 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

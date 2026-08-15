@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Backtesting — AlgoStream</title>
+  <meta name="description" content="lib/strategy and lib/backtest close the loop the strategy layer left open. That layer produced every ingredient of a statistical-arbitrage decision — cointegration, spread z-scores">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Backtesting — AlgoStream">
+  <meta property="og:description" content="lib/strategy and lib/backtest close the loop the strategy layer left open. That layer produced every ingredient of a statistical-arbitrage decision — cointegration, spread z-scores">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">high-fidelity backtesting</span>
+      </div>
+      <div class="group">
+        <span>research</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Research</p>
+        <h1>high-fidelity <span class="accent">backtesting</span></h1>
+        <p class="lede"><code>lib/strategy</code> and <code>lib/backtest</code> close the loop the strategy layer left open. That layer produced every ingredient of a statistical-arbitrage decision — cointegration, spread z-scores, hedge ratios, GARCH, VaR — but nothing that <em>decided</em> anything: <code>Pairs.Snapshot.signal</code> was computed, published, and read by exactly one caller, <code>Snapshot.to_string</code>, which printed it.</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/backtest/</span><span><span class="k">covers</span>Strategy.S · fills · costs · latency</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/backtesting.md" rel="noopener">backtesting.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#reuse-stance">Reuse stance</a></li><li><a href="#the-strategy-contract">The strategy contract</a></li><li><a href="#step-ordering">Step ordering</a></li><li><a href="#maker-fills-and-queue-position">Maker fills and queue position</a></li><li><a href="#costs-slippage-and-latency">Costs, slippage and latency</a></li><li><a href="#worked-example">Worked example</a></li><li><a href="#event-time-invariant">Event-time invariant</a></li><li><a href="#tests-benchmarks">Tests + benchmarks</a></li></ol>
+        </nav>
+        <article class="prose">
+          <section class="intro"><p>Two libraries, eleven modules:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Layer</th><th>Modules</th></tr></thead><tbody><tr><td>Strategy contract</td><td><code>Side</code>, <code>Event</code>, <code>Action</code>, <code>Context</code>, <code>Strategy</code></td></tr><tr><td>Reference strategy</td><td><code>Pairs_mean_reversion</code></td></tr><tr><td>Market simulation</td><td><code>Data_source</code>, <code>Market_view</code>, <code>Slippage</code>, <code>Latency</code>, <code>Cost_model</code></td></tr><tr><td>Execution</td><td><code>Fill_engine</code></td></tr><tr><td>Output</td><td><code>Result</code>, <code>Engine</code></td></tr></tbody></table></div></div><p><code>lib/strategy</code> depends on neither <code>algostream.backtest</code> nor <code>algostream.infrastructure.event_bus</code>, and a test asserts that. A future live runner can therefore implement <code>Strategy.S</code> without linking the fill simulator.</p></section>
+          <section id="reuse-stance"><h2><span class="num">01</span>Reuse stance</h2><p>Most of the market simulation is wiring, not new modelling:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Need</th><th>Where it came from</th></tr></thead><tbody><tr><td>Order-book depth walk</td><td><code>Order_management.Book_impact.estimate_from_book</code></td></tr><tr><td>Permanent market impact</td><td><code>Book_impact.permanent_impact</code>, Almgren square-root</td></tr><tr><td>Venue fees by volume tier</td><td><code>Venue.effective_fee_bps</code></td></tr><tr><td>Execution latency</td><td><code>Venue.base_latency_us</code></td></tr><tr><td>Post-trade TCA</td><td><code>Order_management.Execution_quality.analyze</code></td></tr><tr><td>Legal order transitions</td><td><code>Order_state.can_transition</code></td></tr><tr><td>Pre-trade risk gate</td><td><code>Risk_limits.pre_trade_check</code></td></tr><tr><td>Portfolio accounting</td><td><code>Domain.Portfolio</code>, now with <code>?ts</code> for event time</td></tr></tbody></table></div></div><p>Genuinely new: the strategy contract, queue-position maker fills, TIF enforcement, stop and iceberg triggers, the latency delay queue, and the engine loop itself.</p></section><section id="the-strategy-contract"><h2><span class="num">02</span>The strategy contract</h2><p><code>on_event</code> <strong>returns</strong> actions rather than invoking a submit callback. Three things follow: a strategy is testable as a pure function, order-id assignment and risk gating stay in the engine, and the same <code>Strategy.S</code> can be driven by a backtest or a live runner.</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">val on_event : state -&gt; Context.t -&gt; Event.t -&gt; Action.t list</code></pre></div><p>Rules an implementation must honour — contract, not style:</p><ul><li><strong>No clocks.</strong> Read time from <code>ctx.ts_ns</code>. <code>make strategy-clock-lint</code> and CI both enforce it.</li><li><strong>No I/O, no Domains, no bus.</strong> <code>on_event</code> runs inside the engine's inner loop.</li><li><strong>Idempotence.</strong> The classifier repeats <code>Long_spread</code> for as long as the z-score sits past the band — many ticks. Track what you have acted on, or you will submit an order per tick.</li></ul><p>Every tunable is a <code>float</code> reachable through <code>params_of_assoc</code> / <code>params_to_assoc</code>. That pair is how <code>algostream.optimization</code> traverses the space without knowing the concrete <code>params</code> type; a parameter not reachable that way is one the optimizer cannot tune.</p></section><section id="step-ordering"><h2><span class="num">03</span>Step ordering</h2><p>Per market record, in this order. The ordering is contract — changing it changes results:</p><ol><li>advance the event clock; drop and count out-of-order records</li><li>update <code>Market_view</code>; feed bar builders and per-pair state</li><li>release inbound messages whose delivery time has arrived (fills, order updates, timers)</li><li>release outbound orders that have now reached the venue</li><li>run one <code>Fill_engine</code> pass; book each fill into the portfolio and blotter</li><li>deliver the market event to the strategy; collect its actions</li><li>gate actions against risk limits, assign order ids, admit with outbound latency</li><li>mark to market, accrue financing, sample the equity curve</li></ol><p>A fill is booked into the portfolio <strong>before</strong> the strategy is told about it. The portfolio is the venue's view; the strategy's view is delayed by inbound latency. That asymmetry is real, and it is what makes a latency-sensitive strategy behave differently here than in a naive simulator.</p></section><section id="maker-fills-and-queue-position"><h2><span class="num">04</span>Maker fills and queue position</h2><p>Passive fills use an explicit queue. When a resting limit order arrives at the venue its <code>queue_ahead</code> is seeded from <code>Order_book.depth_at_price</code>, and every subsequent tape print at or through that price drains it. Filling begins only once it reaches zero.</p><p>The approximation is specific and documented: <code>depth_at_price</code> is cumulative <em>at or better</em>, so it counts better-priced orders that are not literally in the queue. Those fill first regardless, so the estimate errs toward making maker fills <strong>harder</strong>, not easier. What it cannot capture is order-by-order priority within a level, which needs L3 data the ingestion layer does not collect.</p><p>An iceberg that refreshes a slice goes to the <strong>back</strong> of the queue — <code>queue_ahead</code> is reseeded from current depth. That is real venue behaviour and the main reason naive iceberg simulation overstates fill rates.</p><p>Three models, in decreasing fidelity:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th><code>maker_fill</code></th><th>Behaviour</th><th>Use</th></tr></thead><tbody><tr><td><code>Queue_position</code></td><td>drains <code>queue_ahead</code> on tape prints</td><td>the default</td></tr><tr><td><code>Touch_cross</code></td><td>fills when the market trades through the price</td><td>cheaper, adequate when not queue-sensitive</td></tr><tr><td><code>Optimistic</code></td><td>fills the moment the touch arrives</td><td>an upper bound, for bracketing only</td></tr></tbody></table></div></div></section><section id="costs-slippage-and-latency"><h2><span class="num">05</span>Costs, slippage and latency</h2><p><code>Cost_model</code> is stateful because fee tiers are volume-dependent: it accumulates realized notional and rolls down the venue's ladder as the backtest trades. A strategy that starts retail and works down to the top tier sees its costs fall, which is what matters when asking whether an edge survives at achievable volume.</p><p><code>Slippage.Regime_scaled</code> is the "slippage modeling <em>with market conditions</em>" requirement: the same base model, multiplied by a factor keyed on the prevailing <code>Analytics.Regime.t</code> (Crisis ×3.0, Volatile ×1.8, Trending ×1.2, Calm ×1.0 by default — a defensible shape, not a calibrated result). A strategy backtested only against calm-regime slippage looks far better than it trades, because the moments it most wants to transact are exactly when spreads widen and depth evaporates.</p></section><section id="worked-example"><h2><span class="num">06</span>Worked example</h2><p>The fixture generator writes a two-leg log whose legs share a common factor and differ by a mean-reverting spread, so the pair is genuinely cointegrated. No network, no recorded session, fully deterministic:</p><div class="code" data-label="bash"><pre><code>make fixture OUT=/tmp/pair.log BARS=3000
+make backtest LOG=/tmp/pair.log MC=2000</code></pre></div><p>Real output from that command:</p><div class="code" data-label="output"><pre><code>pairs_mean_reversion (seed=42 run=0)
+  events=6000 dropped=0 actions=16 submitted=16 rejected=0
+  fills=16 (maker=0 taker=16) cancelled=0 expired=0 fok=0 ioc=0 stops=0
+  unfilled_qty=0 commission=79.95 financing=0.00
+  NAV 100000.00 -&gt; 99878.25 (-0.12%) over 3001 equity points
+
+drawdown episodes (1, worst 3):
+  #0 depth=0.12% decline=1.80d recovery=unrecovered underwater=1.97d
+
+strategy diagnostics:
+  signals                808
+  entries                4
+  exits                  0
+  skipped_screen         5184
+  skipped_idempotent     796
+  forced_flat            4</code></pre></div><p>Read the diagnostics before the P&amp;L. <code>exits = 0</code> with <code>forced_flat = 4</code> says every position was closed because the pair failed its cointegration screen, not because the spread reverted — the strategy never actually completed a mean-reversion trade on this fixture. <code>skipped_idempotent = 796</code> shows the idempotence guard suppressing 796 duplicate signals that would otherwise have become 796 orders. The −0.12% is 79.95 of commission on 16 taker fills against no realized edge, which is the correct outcome for these parameters on this data, not a bug.</p><p>That is the point of the diagnostics: a backtest that loses money for a <em>legible</em> reason is more useful than one that makes money for an illegible one.</p></section><section id="event-time-invariant"><h2><span class="num">07</span>Event-time invariant</h2><p><code>lib/strategy</code> and <code>lib/backtest</code> never read a clock. CI enforces a stricter pattern for these two libraries than for the layers below: <code>Timestamp.now</code> is banned alongside <code>Clock.now_*</code> and <code>Unix.gettimeofday</code>, because the domain mutators now accept <code>?ts</code> and the engine must always supply it. Locally: <code>make bt-clock-lint</code>, <code>make strategy-clock-lint</code>, or <code>make determinism-lint</code> for all of them.</p><p>The engine carries its own <code>int64</code> event clock. Every timestamp in <code>Result.t</code> comes from it. The <code>Timestamp.t</code> fields on <code>Portfolio</code> / <code>Position</code> / <code>Trade</code> are advisory metadata, populated via <code>?ts</code> — no analytics path reads them, which is why the ~240 ns quantization of <code>Timestamp.of_ns</code> cannot affect a reported number.</p><p>Verified end to end: two runs over the same log produce byte-identical equity and blotter CSVs.</p><div class="code" data-label="bash"><pre><code>dune exec bin/backtest.exe -- --log /tmp/pair.log --equity-csv /tmp/a.csv
+dune exec bin/backtest.exe -- --log /tmp/pair.log --equity-csv /tmp/b.csv
+diff /tmp/a.csv /tmp/b.csv        # empty</code></pre></div></section><section id="tests-benchmarks"><h2><span class="num">08</span>Tests + benchmarks</h2><div class="code" data-label="bash"><pre><code>dune runtest test/strategy      # 32 tests across 4 suites
+dune runtest test/backtest      # 27 tests across 4 suites
+make bt-clock-lint &amp;&amp; make strategy-clock-lint
+make bt-bench                   # Apple Silicon: ~840k ev/s frictionless,
+                                # ~865k ev/s with spread + fees,
+                                # ~920k ev/s book-walk over a 5-level ladder</code></pre></div><p>The fill-engine tests assert hand-computed outcomes: a market buy across three ask levels (10@100, 10@101, 10@102) taking 25 units must pay exactly 100.8; a 30-lot resting bid behind 100 of depth fills nothing on a 60-lot print and exactly 20 on the second. The determinism suite compares every <code>Timestamp</code> on the final portfolio across two runs — that is the regression test for the <code>?ts</code> work, and it fails if anyone drops a <code>~ts</code> anywhere in the fill-to-portfolio path.</p><p>The bench is registered in <code>.github/workflows/benchmark.yml</code> and posts to gh-pages.</p></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="risk-management.html"><span class="dir">← previous</span><span>Risk Management</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="monte-carlo.html"><span class="dir">next →</span><span>Monte Carlo</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ backtesting.md
+│ 8 sections · 3 tables · 5 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        research · 8 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

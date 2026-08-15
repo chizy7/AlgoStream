@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Time Series — AlgoStream</title>
+  <meta name="description" content="lib/time_series builds OHLCV bars from the live event stream, aligns multi-symbol series onto a common time grid, fills gaps, and compresses columns for transport. Sits between Sta">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Time Series — AlgoStream">
+  <meta property="og:description" content="lib/time_series builds OHLCV bars from the live event stream, aligns multi-symbol series onto a common time grid, fills gaps, and compresses columns for transport. Sits between Sta">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">time series</span>
+      </div>
+      <div class="group">
+        <span>market data</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Market Data</p>
+        <h1>time <span class="accent">series</span></h1>
+        <p class="lede"><code>lib/time_series</code> builds OHLCV bars from the live event stream, aligns multi-symbol series onto a common time grid, fills gaps, and compresses columns for transport. Sits between <a href="analytics.html">Statistical Data Processing</a> and the strategy layer.</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/time_series/</span><span><span class="k">covers</span>bars · alignment · compression</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/time_series.md" rel="noopener">time_series.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#what-it-produces">What it produces</a></li><li><a href="#concurrency-model">Concurrency model</a></li><li><a href="#bar-boundary">Bar boundary</a></li><li><a href="#alignment">Alignment</a></li><li><a href="#compression">Compression</a></li><li><a href="#determinism">Determinism</a></li><li><a href="#cli">CLI</a></li><li><a href="#source-map">Source map</a></li></ol>
+        </nav>
+        <article class="prose">
+          
+          <section id="what-it-produces"><h2><span class="num">01</span>What it produces</h2><p>For every active <code>(symbol, interval)</code> pair the layer maintains a rolling array of recent <a href="https://github.com/chizy7/AlgoStream/blob/main/lib/time_series/bar.mli" rel="noopener"><code>Bar.t</code></a>:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type t = {
+  symbol : string;
+  open_ts : int64;     (* event-time, half-open [open_ts, close_ts) *)
+  close_ts : int64;
+  open_ : float;
+  high : float;
+  low : float;
+  close : float;
+  volume : float;
+  n_ticks : int;
+  partial : bool;      (* true only for bars emitted by BarBuilder.flush at replay end *)
+}</code></pre></div><p>Strategies query the most recent N bars race-free:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let proc = Algostream_time_series.Processor.start ~bus
+             ~intervals_ns:[ 1_000_000_000L; 60_000_000_000L ] () in
+match Processor.bars proc ~symbol:"BTCUSDT" ~interval_ns:60_000_000_000L with
+| Some bars -&gt; Array.iter (fun b -&gt; Printf.printf "%s\n" (Bar.to_csv_row b)) bars
+| None -&gt; ()</code></pre></div></section><section id="concurrency-model"><h2><span class="num">02</span>Concurrency model</h2><!-- Replaces the `flowchart LR` at docs/guides/time_series.md:39.
+     The processor pattern: bus dispatcher -> shim subscriber -> drain loop
+     -> per-key state -> Atomic.set -> strategy domains. The same shape
+     appears in analytics-1.html and pairs-1.html. -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Processor topology</span>
+    <span>3 domains</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 900 250" role="img"
+         aria-label="The bus dispatcher domain feeds a shim subscriber into the time series domain's drain loop, which maintains a hashtable of bar builders, published to strategy domains by an atomic set.">
+      <defs>
+        <marker id="ah-ts1" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <rect class="d-group" x="8" y="44" width="200" height="190" rx="2"/>
+      <text class="d-glabel" x="20" y="36">Bus Dispatcher Domain</text>
+      <rect class="d-node" x="24" y="110" width="168" height="48" rx="2"/>
+      <text class="d-title" x="40" y="139">Dispatcher loop</text>
+
+      <rect class="d-group" x="328" y="44" width="270" height="190" rx="2"/>
+      <text class="d-glabel" x="340" y="36">Time Series Domain</text>
+      <rect class="d-node" x="344" y="70" width="238" height="44" rx="2"/>
+      <text class="d-title" x="360" y="97">Drain loop</text>
+      <rect class="d-node-a" x="344" y="140" width="238" height="72" rx="2"/>
+      <text class="d-sub"   x="360" y="166">Hashtbl</text>
+      <text class="d-title" x="360" y="185">(symbol, interval)</text>
+      <text class="d-title" x="360" y="202">→ BarBuilder + ring</text>
+      <path class="d-edge" marker-end="url(#ah-ts1)" d="M463,114 L463,134"/>
+
+      <rect class="d-group" x="698" y="44" width="194" height="190" rx="2"/>
+      <text class="d-glabel" x="710" y="36">Strategy Domains</text>
+      <rect class="d-node" x="714" y="110" width="162" height="48" rx="2"/>
+      <text class="d-title" x="730" y="133">Processor.bars</text>
+      <text class="d-sub"   x="730" y="149">~symbol ~interval_ns</text>
+
+      <text class="d-elabel" x="268" y="12" text-anchor="middle">shim subscriber</text>
+      <text class="d-elabel" x="268" y="24" text-anchor="middle">Sanity + SPSC enqueue</text>
+      <path class="d-edge" marker-end="url(#ah-ts1)" d="M192,134 C 250,134 260,92 338,92"/>
+
+      <text class="d-elabel" x="648" y="240" text-anchor="middle">Atomic.set Bar.t array</text>
+      <path class="d-edge" marker-end="url(#ah-ts1)" d="M582,176 C 640,176 650,134 708,134"/>
+    </svg>
+  </div>
+</div><ul><li>Bus shim is O(1) — Sanity check + SPSC enqueue.</li><li>A dedicated Time Series Domain drains the SPSC and updates per-<code>(symbol, interval)</code> <code>Bar_builder.t</code> instances.</li><li>Each <code>(symbol, interval)</code> pair has its own <code>Bar.t array Atomic.t</code>. On every bar close the writer publishes a <em>fresh</em> (immutable) array; readers <code>Atomic.get</code> and see either the previous or the new whole array — never a torn read.</li><li>LRU cap defaults to 256 active pairs; the oldest is evicted on overflow.</li></ul></section><section id="bar-boundary"><h2><span class="num">03</span>Bar boundary</h2><p>Half-open intervals: <code>[bar_open_ts, bar_open_ts + interval_ns)</code>.</p><ul><li><code>bar_open_ts = floor(tick.timestamp_ns / interval_ns) * interval_ns</code></li><li>A tick whose <code>ts == close_ts</code> belongs to the <strong>next</strong> bar.</li><li>A tick whose <code>ts &lt; current_bar.open_ts</code> (out-of-order, late) is <strong>dropped + counted</strong>. Closed bars are never rewritten.</li><li><code>BarBuilder.flush</code> returns the partial open bar (with <code>partial = true</code>) for replay-end use; real-time bar streams never invoke flush.</li></ul></section><section id="alignment"><h2><span class="num">04</span>Alignment</h2><p><code>lib/time_series/align.ml</code> snaps multiple <code>Series.t</code> onto a common timestamp grid.</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Pad policy</th><th>Meaning</th></tr></thead><tbody><tr><td><code>Pad_nan</code></td><td>fill missing rows with <code>Float.nan</code>; validity column tracks holes</td></tr><tr><td><code>Drop</code></td><td>skip rows where any column is missing</td></tr><tr><td><code>Skip_until_all_present</code></td><td>output starts at the first grid point where every series has data</td></tr></tbody></table></div></div><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Gap fill</th><th>Meaning</th></tr></thead><tbody><tr><td><code>Forward_fill</code></td><td>use last-known value</td></tr><tr><td><code>Linear</code></td><td>linearly interpolate between surrounding valid rows</td></tr><tr><td><code>Leave_nan</code></td><td>honest holes; downstream sees NaN</td></tr></tbody></table></div></div><p><strong>Interpolation across feed-down gaps is forbidden.</strong> A series outage is detected via <code>Feed_health.gap_at</code> (the hookpoint for gap reporting) and the alignment routine writes 0 to the validity column for any row inside that window — interpolating across an outage fabricates ticks that never existed.</p></section><section id="compression"><h2><span class="num">05</span>Compression</h2><p><code>lib/time_series/compress.ml</code> implements <strong>Gorilla XOR-delta-of-bits</strong> for floats and <strong>delta + zigzag varint</strong> for monotonic int64 timestamps. Both round-trip exactly:</p><ul><li>Floats: <code>Int64.bits_of_float</code> → XOR with previous → varint over significant-bytes block. Round-trips NaN, ±Inf, ±0, denormals, signed values without modification — encoder never interprets the value as a number.</li><li>Timestamps: <code>delta = ts[i] - ts[i-1]</code> → zigzag → varint. Monotonic, sub-millisecond gaps compress to ~1-2 bytes per value.</li></ul><p>Reference numbers (Apple Silicon, release):</p><ul><li>Bar builder: <strong>~42M tick/s</strong> direct, 23 ns/tick.</li><li>Float compression: ~1.1 bytes/value on a random walk (high-entropy XOR), much better on real markets where prices repeat.</li><li>Int64 timestamps: <strong>~3.8 bytes/value</strong> (compression ratio 0.47).</li></ul></section><section id="determinism"><h2><span class="num">06</span>Determinism</h2><p>Every time arithmetic in <code>lib/time_series</code> reads from <code>tick.timestamp_ns</code> — never wall-clock. Enforced by <code>make ts-clock-lint</code> and a CI step. <code>algostream-bars</code> replayed twice over the same event log produces identical CSV output (used in CI as the determinism check).</p></section><section id="cli"><h2><span class="num">07</span>CLI</h2><div class="code" data-label="bash"><pre><code># Replay a captured event_log into 1-minute bars and print CSV
+make bars LOG=/tmp/ingest.log INTERVAL=1m SYMBOL=BTCUSDT
+# Or directly:
+dune exec bin/bars.exe -- --log /tmp/ingest.log --interval 1m --symbol BTCUSDT</code></pre></div><p>Output:</p><div class="code" data-label="output"><pre><code>symbol,open_ts,close_ts,open,high,low,close,volume,n_ticks,partial
+BTCUSDT,1700000000000000000,1700000060000000000,50001.5,50012.0,49998.2,50007.3,12.7,143,false
+...</code></pre></div></section><section id="source-map"><h2><span class="num">08</span>Source map</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Module</th><th>Path</th></tr></thead><tbody><tr><td>Top-level facade</td><td><code>lib/time_series/processor.{ml,mli}</code></td></tr><tr><td>Streaming bar emitter</td><td><code>lib/time_series/bar_builder.{ml,mli}</code></td></tr><tr><td>Bar record</td><td><code>lib/time_series/bar.{ml,mli}</code></td></tr><tr><td>Columnar buffers</td><td><code>lib/time_series/column.{ml,mli}</code></td></tr><tr><td>Multi-column timestamped series</td><td><code>lib/time_series/series.{ml,mli}</code></td></tr><tr><td>Multi-symbol alignment</td><td><code>lib/time_series/align.{ml,mli}</code></td></tr><tr><td>Gap interpolation</td><td><code>lib/time_series/interpolate.{ml,mli}</code></td></tr><tr><td>Lossless compression</td><td><code>lib/time_series/compress.{ml,mli}</code></td></tr><tr><td>CLI</td><td><code>bin/bars.ml</code></td></tr><tr><td>Tests</td><td><code>test/time_series/</code></td></tr><tr><td>Throughput bench</td><td><code>test/performance/bar_builder_throughput.ml</code></td></tr><tr><td>Compression round-trip bench</td><td><code>test/performance/compress_roundtrip.ml</code></td></tr></tbody></table></div></div></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="normalization.html"><span class="dir">← previous</span><span>Normalization &amp; Quality</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="analytics.html"><span class="dir">next →</span><span>Statistical Processing</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ time_series.md
+│ 8 sections · 3 tables · 4 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        market data · 8 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Telemetry — AlgoStream</title>
+  <meta name="description" content="The monitoring layer: what it measures, where each number comes from, and the one figure it cannot honestly report during a replay.">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Telemetry — AlgoStream">
+  <meta property="og:description" content="The monitoring layer: what it measures, where each number comes from, and the one figure it cannot honestly report during a replay.">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">telemetry</span>
+      </div>
+      <div class="group">
+        <span>operations</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Operations</p>
+        <h1><span class="accent">telemetry</span></h1>
+        <p class="lede">The monitoring layer: what it measures, where each number comes from, and the one figure it cannot honestly report during a replay.</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/telemetry/</span><span><span class="k">covers</span>percentiles · health · alerts</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/telemetry.md" rel="noopener">telemetry.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#what-the-collector-exposes">What the collector exposes</a></li><li><a href="#percentiles-not-averages">Percentiles, not averages</a></li><li><a href="#measured-cost">Measured cost</a></li><li><a href="#why-the-collector-is-not-a-processor">Why the collector is not a processor</a></li><li><a href="#decoupling">Decoupling</a></li><li><a href="#alerts">Alerts</a></li><li><a href="#health">Health</a></li><li><a href="#latency-during-replay">Latency during replay</a></li><li><a href="#source-map">Source map</a></li><li><a href="#scope-and-limitations">Scope and limitations</a></li></ol>
+        </nav>
+        <article class="prose">
+          
+          <section id="what-the-collector-exposes"><h2><span class="num">01</span>What the collector exposes</h2><p>The collector aggregates from every subsystem without depending on any of them — subsystems register a closure, so <code>algostream.telemetry</code> links neither ingestion, the processors nor the runtime.</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Source</th><th>What it contributes</th></tr></thead><tbody><tr><td><code>Event_bus</code></td><td>publish/drop counts per priority band, dispatch count, handler errors, queue depth</td></tr><tr><td><code>Telemetry.Histogram</code></td><td>latency percentiles — p50, p90, p99, p99.9, max — and SLA violation counts</td></tr><tr><td><code>Memory_monitor.latest</code></td><td>GC statistics and heap size</td></tr><tr><td><code>{Analytics,Pairs,Time_series}.Processor.stats</code></td><td>ticks observed, processed, dropped; active keys</td></tr><tr><td><code>Ingestion.live_stats</code></td><td>per-exchange drops, sequence gaps, stale ticks, crossed books</td></tr><tr><td><code>Runtime.Supervisor</code></td><td>instances, NAV, allocation, events processed</td></tr><tr><td><code>Risk_management.Monitor</code></td><td>the most recent risk snapshot, with its age</td></tr></tbody></table></div></div></section><section id="percentiles-not-averages"><h2><span class="num">02</span>Percentiles, not averages</h2><p><code>Telemetry.Histogram</code> is a fixed array of <code>int Atomic.t</code> buckets, HdrHistogram-style, with <code>sub_bits = 4</code> giving 16 sub-buckets per octave and therefore at most 6.25% relative error. Recording is a bit-twiddle and one <code>Atomic.incr</code> — wait-free, allocation-free, and correct under concurrent producers.</p><p>An average latency is close to useless for a system whose contract is stated as a tail bound, which is why the percentiles live in library code rather than being computed by a benchmark binary.</p><div class="callout"><span class="q">Do not use <code>Time_utils.LatencyMonitor</code>.</span><p>It is backed by a <code>Queue.t</code> and plain <code>ref</code>s, but
+<code>Publish_to_enqueue</code> is recorded from <em>every producer Domain</em> — a data race in the hot path. It
+remains in the tree; <code>Telemetry.Histogram</code> is the supported replacement.</p></div><p>Percentiles are exact with respect to the bucketed data: no sampling, no reservoir, no RNG. That matters, because the repo's other percentile facility (<code>Math_utils.Statistics.create_percentile_tracker</code>) reservoir-samples off <code>Random.State.make_self_init</code> and is both approximate and non-reproducible.</p></section><section id="measured-cost"><h2><span class="num">03</span>Measured cost</h2><p>Apple Silicon, release profile, from <code>make tel-bench</code>:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Operation</th><th>ns/op</th></tr></thead><tbody><tr><td><code>histogram.record</code></td><td>~13</td></tr><tr><td><code>histogram.percentile</code></td><td>~389</td></tr><tr><td><code>bus.publish</code> with the collector attached</td><td>~474</td></tr><tr><td><code>collector.snapshot</code></td><td>~4 010</td></tr></tbody></table></div></div><p><code>record</code> is what runs inline on the dispatcher for every event, so 13 ns is the number that matters. <code>snapshot</code> allocates and is pulled at the UI's refresh rate — 4 µs at 4 Hz is 0.0016% of a core.</p></section><section id="why-the-collector-is-not-a-processor"><h2><span class="num">04</span>Why the collector is not a processor</h2><p>The three existing bus consumers all use the same shape: an O(1) handler that enqueues into an SPSC ring, a dedicated Domain that drains it, and an <code>Atomic.set</code> snapshot. That shape exists because those layers do real per-tick work.</p><p>The collector does not. Its handler records one latency sample and returns. Adding a queue and a Domain would cost more than the work it defers. Snapshot assembly, which does allocate, is <strong>pulled</strong> by the caller instead of pushed.</p></section><section id="decoupling"><h2><span class="num">05</span>Decoupling</h2><p><code>algostream.telemetry</code> depends on nothing but the event bus. Subsystems register as closures:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">Telemetry.Collector.register collector
+  { Telemetry.Collector.name = "ingestion";
+    metrics = (fun () -&gt; [ ("bus_drops", 3.0); ("stale_ticks", 1.0) ]);
+    health  = Some (fun () -&gt; Health.Degraded "one feed quiet") }</code></pre></div><p>Metrics are name/value pairs rather than a closed record, following the precedent <code>Performance.Metrics.to_assoc</code> set. A provider that raises is reported as <code>Failed</code> and contained — the dashboard is what you look at when something is already broken, so it must not break with it.</p></section><section id="alerts"><h2><span class="num">06</span>Alerts</h2><p>Nothing in the repo had an alert sink before this. <code>Risk_alert</code> exists as a bus payload and is published by five sites in <code>data_ingestion</code>, but its only consumer was a <code>printf</code> in <code>bin/ingest.ml</code>.</p><p>The problem an alert system actually has to solve is repetition: a degraded feed re-evaluates every sample period, and an alert that fires four times a second is noise. A code is therefore raised at most once per window, with repeats folded into a count.</p><p>The window is measured <strong>from the start of the current burst</strong>, not from the last raise. Comparing against the last raise would mean a condition re-evaluated faster than the window never re-notifies at all: each raise pushes the deadline out, so a permanently broken feed would alert once and then go quiet forever.</p></section><section id="health"><h2><span class="num">07</span>Health</h2><p><code>GET /api/health</code> is the aggregate, and it answers <strong>503</strong> when anything reports <code>Failed</code>. It is what the Kubernetes liveness, readiness and startup probes gate on, what the container <code>HEALTHCHECK</code> curls, and what the <code>AlgoStreamUnhealthy</code> Prometheus rule watches — so it has to be able to fail.</p><p>Each subsystem registers a closure; the worst status wins.</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Subsystem</th><th>Degraded</th><th>Failed</th></tr></thead><tbody><tr><td>ingestion</td><td>connecting, or reconnecting, or a feed silent for 30 s</td><td>circuit breaker open, feed silent for 120 s, or any <code>critical_drops</code></td></tr><tr><td>runtime</td><td>strategy Domain has dropped events</td><td>≥ 10,000 dropped</td></tr><tr><td>analytics · pairs</td><td>drain loop has dropped ticks</td><td>≥ 10,000 dropped</td></tr></tbody></table></div></div><p><strong>A connected-but-silent feed is the case worth understanding.</strong> The counters cannot detect it: a feed producing nothing has also dropped nothing, so every quality metric reads zero and looks perfect. Only the connection mirror's <code>time_since_last_message_ns</code> distinguishes a quiet feed from a dead one, which is why ingestion's check reads it rather than the counters.</p><p>A check that raises is reported as <code>Failed</code> rather than propagating — one broken probe must not take down the endpoint.</p></section><section id="latency-during-replay"><h2><span class="num">08</span>Latency during replay</h2><p>End-to-end latency is <code>now - event.timestamp_ns</code>. For a live feed that is exactly the delivery latency. For a <strong>replayed</strong> log it is not: the events carry the timestamps they had when they were recorded, so the histogram measures the age of the log — hours or days — and the SLA alert fires on every event.</p><p>The daemon publishes <code>"source": "replay" | "live"</code> for exactly this reason, and the dashboard shows <code>n/a</code> for SLA breaches rather than a red 100%. Treat latency as meaningful only when the source is live.</p></section><section id="source-map"><h2><span class="num">09</span>Source map</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Module</th><th>Path</th></tr></thead><tbody><tr><td>Lock-free histogram</td><td><code>lib/telemetry/histogram.{ml,mli}</code></td></tr><tr><td>Health checks</td><td><code>lib/telemetry/health.{ml,mli}</code></td></tr><tr><td>Alert registry</td><td><code>lib/telemetry/alert.{ml,mli}</code></td></tr><tr><td>Bus subscription, providers, snapshot</td><td><code>lib/telemetry/collector.{ml,mli}</code></td></tr><tr><td>Published aggregate</td><td><code>lib/telemetry/snapshot.{ml,mli}</code></td></tr><tr><td>Bus flow counters</td><td><code>lib/infrastructure/event_bus/event_bus.{ml,mli}</code></td></tr><tr><td>Bench</td><td><code>test/performance/telemetry_throughput.ml</code></td></tr></tbody></table></div></div></section><section id="scope-and-limitations"><h2><span class="num">10</span>Scope and limitations</h2><p>Latency, throughput, alerting, correlation status and health checks are all live.</p><p>The 50,000 ev/s throughput target and the 5 ms latency target are tracked here, but <strong>whether they hold against a live venue is unmeasured</strong> — this project has no venue connectivity, so there is no order leg to include. The figures below are publish-to-handler only, and that is the whole of what they claim.</p></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="dashboard.html"><span class="dir">← previous</span><span>Dashboard</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="live-runtime.html"><span class="dir">next →</span><span>Live Runtime</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ telemetry.md
+│ 10 sections · 4 tables · 1 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        operations · 10 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

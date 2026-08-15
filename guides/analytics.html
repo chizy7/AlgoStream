@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Statistical Processing — AlgoStream</title>
+  <meta name="description" content="lib/analytics is the layer that consumes raw Market_tick and Trade_print events from the event bus and produces denoised, validated, regime-aware per-symbol stats that strategies c">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Statistical Processing — AlgoStream">
+  <meta property="og:description" content="lib/analytics is the layer that consumes raw Market_tick and Trade_print events from the event bus and produces denoised, validated, regime-aware per-symbol stats that strategies c">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">statistical processing</span>
+      </div>
+      <div class="group">
+        <span>market data</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Market Data</p>
+        <h1>statistical <span class="accent">processing</span></h1>
+        <p class="lede"><code>lib/analytics</code> is the layer that consumes raw <code>Market_tick</code> and <code>Trade_print</code> events from the event bus and produces denoised, validated, regime-aware per-symbol stats that strategies can poll. It sits between market-data ingestion and the statistical-arbitrage strategies.</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/analytics/</span><span><span class="k">covers</span>denoise · rolling stats · regime</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/analytics.md" rel="noopener">analytics.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#concurrency-model">Concurrency model</a></li><li><a href="#what-the-layer-produces">What the layer produces</a></li><li><a href="#numerical-correctness">Numerical correctness</a></li><li><a href="#determinism">Determinism</a></li><li><a href="#backpressure">Backpressure</a></li><li><a href="#stale-symbol-gc">Stale-symbol GC</a></li><li><a href="#reference-numbers">Reference numbers</a></li><li><a href="#adding-a-custom-outlier-filter">Adding a custom outlier filter</a></li><li><a href="#known-gaps-follow-ups">Known gaps / follow-ups</a></li><li><a href="#source-map">Source map</a></li></ol>
+        </nav>
+        <article class="prose">
+          
+          <section id="concurrency-model"><h2><span class="num">01</span>Concurrency model</h2><!-- Replaces the `flowchart LR` at docs/guides/analytics.md:9.
+     Same processor topology as time-series-1.html and pairs-1.html, with
+     the ingestion fibers shown explicitly as the upstream stage. -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Processor topology</span>
+    <span>4 domains</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 1040 262" role="img"
+         aria-label="Binance and Coinbase fibers publish to the bus dispatcher domain, which feeds a shim subscriber into the analytics domain's drain loop and per-symbol state, published to strategy domains by an atomic set.">
+      <defs>
+        <marker id="ah-an1" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <rect class="d-group" x="8" y="44" width="150" height="200" rx="2"/>
+      <text class="d-glabel" x="20" y="36">Ingestion Domain</text>
+      <rect class="d-node" x="22" y="86" width="122" height="42" rx="2"/>
+      <text class="d-title" x="36" y="112">Binance fiber</text>
+      <rect class="d-node" x="22" y="158" width="122" height="42" rx="2"/>
+      <text class="d-title" x="36" y="184">Coinbase fiber</text>
+
+      <rect class="d-group" x="268" y="44" width="150" height="200" rx="2"/>
+      <text class="d-glabel" x="280" y="36">Bus Dispatcher</text>
+      <rect class="d-node" x="282" y="120" width="122" height="46" rx="2"/>
+      <text class="d-title" x="296" y="141">Dispatcher</text>
+      <text class="d-title" x="296" y="157">loop</text>
+
+      <rect class="d-group" x="528" y="44" width="230" height="200" rx="2"/>
+      <text class="d-glabel" x="540" y="36">Analytics Domain</text>
+      <rect class="d-node" x="542" y="66" width="202" height="42" rx="2"/>
+      <text class="d-title" x="556" y="92">Drain loop</text>
+      <rect class="d-node-a" x="542" y="132" width="202" height="94" rx="2"/>
+      <text class="d-sub"   x="556" y="156">Per-symbol state</text>
+      <text class="d-title" x="556" y="174">filters</text>
+      <text class="d-title" x="556" y="191">rolling stats</text>
+      <text class="d-title" x="556" y="208">regime</text>
+      <path class="d-edge" marker-end="url(#ah-an1)" d="M643,108 L643,126"/>
+
+      <rect class="d-group" x="868" y="44" width="164" height="200" rx="2"/>
+      <text class="d-glabel" x="880" y="36">Strategy Domains</text>
+      <rect class="d-node" x="882" y="120" width="136" height="46" rx="2"/>
+      <text class="d-title" x="896" y="141">Processor</text>
+      <text class="d-sub"   x="896" y="157">.snapshot ~symbol</text>
+
+      <text class="d-elabel" x="213" y="26" text-anchor="middle">try_publish</text>
+      <path class="d-edge" marker-end="url(#ah-an1)" d="M144,107 C 190,107 200,143 276,143"/>
+      <path class="d-edge" marker-end="url(#ah-an1)" d="M144,179 C 190,179 200,143 276,143"/>
+
+      <text class="d-elabel" x="473" y="12" text-anchor="middle">shim subscriber</text>
+      <text class="d-elabel" x="473" y="24" text-anchor="middle">Sanity + SPSC enqueue</text>
+      <path class="d-edge" marker-end="url(#ah-an1)" d="M404,143 C 460,143 470,88 536,88"/>
+
+      <text class="d-elabel" x="813" y="252" text-anchor="middle">Atomic.set Snapshot.t</text>
+      <path class="d-edge" marker-end="url(#ah-an1)" d="M744,180 C 800,180 810,143 876,143"/>
+    </svg>
+  </div>
+</div><ul><li><strong>Three Domains</strong>: Bus Dispatcher (lock-free PQ), Ingestion (Lwt fibers), Analytics (this layer).</li><li>The bus shim subscriber does only <code>Sanity.check</code> + <code>SPSCQueue.enqueue</code> — it returns in O(1) so it cannot stall the dispatcher.</li><li>The Analytics Domain owns all per-symbol mutable state and is the sole writer.</li><li>Cross-Domain reads from strategies use <code>Processor.snapshot ~symbol</code>, which calls <code>Atomic.get</code> on an immutable <code>Snapshot.t</code> published by the Analytics Domain. No torn reads, no per-field atomicity dance — the <code>Atomic.set</code>/<code>Atomic.get</code> release-acquire pair covers the whole record because the published value is itself immutable.</li></ul></section><section id="what-the-layer-produces"><h2><span class="num">02</span>What the layer produces</h2><p>For every active symbol, the layer maintains:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Field</th><th>Source</th><th>Notes</th></tr></thead><tbody><tr><td><code>last_price</code></td><td>most recent valid tick</td><td>filtered through Sanity + Z-score</td></tr><tr><td><code>denoised_price</code></td><td><code>Filters.Kalman1d</code></td><td>local-level model with auto-bootstrapped Q/R</td></tr><tr><td><code>realized_vol</code></td><td><code>Volatility.Realized</code></td><td>rolling-window stddev of log-returns</td></tr><tr><td><code>ewma_vol</code></td><td><code>Volatility.Ewma</code></td><td>streaming, with RiskMetrics-style bias correction</td></tr><tr><td><code>rolling_mean_price</code> / <code>rolling_std_price</code></td><td><code>Rolling.Rolling_mean</code> / <code>Rolling_var</code></td><td>periodic full-recompute every K ticks (avoids sliding-Welford cancellation)</td></tr><tr><td><code>drawdown_from_peak</code></td><td>rolling peak tracker</td><td>of denoised price</td></tr><tr><td><code>regime</code></td><td><code>Regime.detector</code></td><td><code>Calm | Trending | Volatile | Crisis</code>, asymmetric dwell-time hysteresis</td></tr><tr><td><code>rejected_count</code></td><td>outlier pipeline</td><td>lifetime count of dropped ticks</td></tr><tr><td><code>ready</code></td><td>composite</td><td>true once every estimator's bias-correction weight has converged</td></tr></tbody></table></div></div><p>Strategies poll on tick:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let snap = Algostream_analytics.Processor.snapshot proc ~symbol:"BTCUSDT" in
+if snap.ready &amp;&amp; snap.regime = Regime.Calm then
+  (* … run mean-reversion entry logic … *)</code></pre></div></section><section id="numerical-correctness"><h2><span class="num">03</span>Numerical correctness</h2><p>Three load-bearing decisions:</p><ol><li><strong>Periodic full recompute for sliding-window stats.</strong> Naïve sliding-Welford (subtract the outgoing point's contribution from M2) suffers catastrophic cancellation on long-running streams. <code>Rolling_var</code> / <code>Rolling_cov</code> / <code>Rolling_corr</code> keep the most recent N samples in a circular buffer and run a full O(N) recompute every <code>recompute_every</code> ticks (<code>= max 8 (window/16)</code> by default). Between recomputes an incremental update is applied for cheap reads; the contract is "exact at recompute boundaries, bounded-error in between."</li><li><strong>EWMA bias correction.</strong> A fresh EWMA with α = 2/(period+1) is heavily biased on the first ~3·period samples. <code>Filters.Ewma</code> carries <code>s_t</code> <em>and</em> a normalization weight <code>w_t = α + (1-α)·w_{t-1}</code> and reports <code>s_t / w_t</code>; <code>Filters.Ewma.ready</code> is true once <code>w_t ≥ 0.95</code>. Same trick on <code>Filters.Ewma_var</code>.</li><li><strong>Sanity-first outlier pipeline.</strong> <code>Sanity</code> rejects non-finite, zero, or negative prices/sizes BEFORE any moment-based filter sees them. This is what prevents NaN propagating forever through EWMA/Kalman/Welford.</li></ol></section><section id="determinism"><h2><span class="num">04</span>Determinism</h2><p>The analytics path reads time <strong>only</strong> from <code>tick.timestamp_ns</code> — never <code>Unix.gettimeofday</code>, never <code>Clock.now_*</code>. This makes <code>event_replay.exe</code> produce bit-for-bit identical Snapshots on every run of the same fixture, which is what makes backtests reproducible.</p><p>Enforced by:</p><ul><li><code>make analytics-clock-lint</code> — local check</li><li><code>.github/workflows/ci.yml</code> lint step — fails CI on any wall-clock leak</li></ul><p>The unit test <code>test/analytics/test_determinism.ml</code> runs the same fixture stream twice and asserts the final snapshots are field-equivalent.</p></section><section id="backpressure"><h2><span class="num">05</span>Backpressure</h2><ul><li>Bus → analytics: bus shim subscriber drops + counts when the SPSC handoff queue (cap 65 536) is full. Counter exposed via <code>Processor.stats.ticks_dropped_full_queue</code>.</li><li>Bus dispatcher → all subscribers: serialized; if your handler is slow it taxes everyone. Our shim is intentionally O(1) so it never does.</li><li><code>try_publish</code> from inside the analytics path: returns <code>false</code> on Critical-band overflow, falls through to <code>Logs.err</code>, so an alert is never silently lost.</li></ul></section><section id="stale-symbol-gc"><h2><span class="num">06</span>Stale-symbol GC</h2><p><code>Per_symbol.t</code> instances are born lazily on first tick. The <code>Processor</code> keeps an LRU cap of <code>Config.t.max_active_symbols</code> (default 256); when exceeded, the symbol with the oldest <code>last_event_ts_ns</code> is evicted. Querying a GC'd symbol returns <code>Snapshot.empty ~symbol</code> rather than crashing.</p></section><section id="reference-numbers"><h2><span class="num">07</span>Reference numbers</h2><p>On Apple Silicon (release profile, <code>make analytics-bench</code>):</p><ul><li><strong>Direct call rate</strong> (<code>Per_symbol.on_tick</code> in a tight loop): ≈ 39 000 ev/s, ≈ 25 µs / tick.</li><li><strong>Through-bus rate</strong> (50 k events published into bus, drained by Analytics Domain): ≈ 37 000 ev/s, 0 dropped at the SPSC handoff.</li></ul><p>The 50 k events/sec SLA is for <em>ingestion</em> (raw parser → bus); ingestion benches show ~427 k ev/s for Binance / ~350 k for Coinbase. The analytics layer sits a layer below and runs plenty fast for real market rates (Binance is ~10 k ev/s on a busy crypto pair).</p><p>The bench fails CI if direct throughput drops below 20 k ev/s — that's a <strong>regression detector</strong>, not the absolute floor. Tighten as the layer is optimized.</p></section><section id="adding-a-custom-outlier-filter"><h2><span class="num">08</span>Adding a custom outlier filter</h2><p>Filters implement the <code>FILTER</code> module type:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">module type FILTER = sig
+  type t
+  val name : string
+  val update : t -&gt; float -&gt; Outlier.verdict
+end</code></pre></div><p><code>Outlier.run</code> chains them left-to-right; first <code>Reject</code> short-circuits. The default v1 pipeline is <code>Sanity → Z_score</code>; <code>Hampel</code> is constructed but kept off the hot path (its O(window log window) median/MAD recompute every tick was the bench bottleneck).</p><p>To use Hampel for a paranoid feed, build a custom pipeline by reaching into <code>Per_symbol.create</code> and constructing the runner list yourself.</p></section><section id="known-gaps-follow-ups"><h2><span class="num">09</span>Known gaps / follow-ups</h2><ul><li><strong>Cross-symbol rolling correlation</strong> is wired (<code>Rolling.Rolling_corr</code>) but `Processor.correlation</li></ul><p>~a ~b` returns 0.0 — that needs a shared cross-pair state table the strategy layer would own.</p><ul><li><strong>Kalman parameter recalibration</strong> runs on first transition into the regime detector only. Periodic event-time recalibration is not implemented.</li><li><strong>Snapshot/restore</strong> for hot-reload (round-trip <code>bin_prot</code> of <code>Per_symbol.t</code>) is in the plan but deferred — no strategy currently needs it.</li><li><strong>Per-symbol Domain sharding</strong> is a future scale-out: today a single Analytics Domain drains all symbols. Hash-shard symbol → N Domains when one Domain isn't enough.</li></ul></section><section id="source-map"><h2><span class="num">10</span>Source map</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Module</th><th>Path</th></tr></thead><tbody><tr><td>Top-level facade</td><td><code>lib/analytics/processor.{ml,mli}</code></td></tr><tr><td>Per-symbol orchestration</td><td><code>lib/analytics/per_symbol.{ml,mli}</code></td></tr><tr><td>Immutable snapshot</td><td><code>lib/analytics/snapshot.{ml,mli}</code></td></tr><tr><td>Filters (Sanity / EWMA / Kalman / Median)</td><td><code>lib/analytics/filters.{ml,mli}</code></td></tr><tr><td>Rolling stats</td><td><code>lib/analytics/rolling.{ml,mli}</code></td></tr><tr><td>Outlier pipeline</td><td><code>lib/analytics/outlier.{ml,mli}</code></td></tr><tr><td>Volatility</td><td><code>lib/analytics/volatility.{ml,mli}</code></td></tr><tr><td>Regime detector</td><td><code>lib/analytics/regime.{ml,mli}</code></td></tr><tr><td>Tick conversion</td><td><code>lib/analytics/tick_event.{ml,mli}</code></td></tr><tr><td>Config</td><td><code>lib/analytics/config.{ml,mli}</code></td></tr><tr><td>Tests</td><td><code>test/analytics/</code></td></tr><tr><td>Throughput bench</td><td><code>test/performance/analytics_throughput.ml</code></td></tr></tbody></table></div></div></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="time-series.html"><span class="dir">← previous</span><span>Time Series</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="pairs.html"><span class="dir">next →</span><span>Pairs Trading</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ analytics.md
+│ 10 sections · 2 tables · 2 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        market data · 10 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

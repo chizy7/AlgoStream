@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Risk Management — AlgoStream</title>
+  <meta name="description" content="lib/risk_management is the portfolio-level risk layer that consumes Portfolio state + recent returns + (optionally) Pairs correlations + a fitted GARCH model and produces a single ">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Risk Management — AlgoStream">
+  <meta property="og:description" content="lib/risk_management is the portfolio-level risk layer that consumes Portfolio state + recent returns + (optionally) Pairs correlations + a fitted GARCH model and produces a single ">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">risk management</span>
+      </div>
+      <div class="group">
+        <span>strategy</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Strategy</p>
+        <h1>risk <span class="accent">management</span></h1>
+        <p class="lede"><code>lib/risk_management</code> is the portfolio-level risk layer that consumes Portfolio state + recent returns + (optionally) Pairs correlations + a fitted GARCH model and produces a single <code>Risk_snapshot.t</code> per update — VaR, Expected Shortfall, drawdown metrics, exposures, correlation breakdown status, circuit breaker state, and a list of any limit breaches.</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/risk_management/</span><span><span class="k">covers</span>VaR · drawdown · circuit breaker</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/risk_management.md" rel="noopener">risk_management.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#reuse-stance">Reuse stance</a></li><li><a href="#four-var-methods">Four VaR methods</a></li><li><a href="#drawdown-tracker">Drawdown tracker</a></li><li><a href="#correlation-breakdown-detector">Correlation breakdown detector</a></li><li><a href="#circuit-breaker">Circuit breaker</a></li><li><a href="#risk-limits-amp-pre-trade-checks">Risk limits &amp; pre-trade checks</a></li><li><a href="#monitor-putting-it-together">Monitor — putting it together</a></li><li><a href="#event-time-invariant">Event-time invariant</a></li><li><a href="#composite-risk-score-proprietary-models">Composite risk score (Proprietary_models)</a></li><li><a href="#tests-benchmarks">Tests + benchmarks</a></li></ol>
+        </nav>
+        <article class="prose">
+          <section class="intro"><p>Nine modules, four layers:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Layer</th><th>Modules</th></tr></thead><tbody><tr><td>Math / detectors</td><td><code>Var</code>, <code>Drawdown</code>, <code>Correlation_breakdown</code>, <code>Exposure</code></td></tr><tr><td>State machines</td><td><code>Circuit_breaker</code>, <code>Monitor</code></td></tr><tr><td>Schema</td><td><code>Risk_limits</code>, <code>Risk_snapshot</code></td></tr><tr><td>Composite</td><td><code>Proprietary_models</code></td></tr></tbody></table></div></div><p>Pure-math + lightweight stateful objects — no Domain ownership. Strategies own the <code>Monitor.t</code> and <code>Portfolio.t</code>. Same architectural shape as <code>lib/advanced_models/</code> and <code>lib/order_management/</code>.</p></section>
+          <section id="reuse-stance"><h2><span class="num">01</span>Reuse stance</h2><p>The existing <code>lib/domain/portfolio/portfolio.ml</code>'s <code>Risk_metrics</code> module already had historical-sim VaR + ES + max DD — used in backtests and untouched by this PR. The new <code>Var.Historical</code> wraps those functions inside a uniform <code>result</code> record. The other three methods (<code>Parametric_normal</code>, <code>Cornish_fisher</code>, <code>Garch_forecast</code>) are new.</p><p>The portfolio <code>Circuit_breaker</code> mirrors the proven state machine shape from <code>lib/data_ingestion/connection_supervisor.ml</code> (which guards network connections): <code>Active → Tripped → Recovering</code>. Different trigger kinds, same control flow.</p></section><section id="four-var-methods"><h2><span class="num">02</span>Four VaR methods</h2><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type method_ =
+  | Historical
+  | Parametric_normal
+  | Cornish_fisher
+  | Garch_forecast of Algostream_advanced_models.Garch11.t</code></pre></div><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Method</th><th>When to use</th><th>Notes</th></tr></thead><tbody><tr><td><code>Historical</code></td><td>Default for backtests; robust to non-normality</td><td>Empirical quantile + tail mean. Slow to react to regime changes (equal-weight history). Wraps existing <code>Portfolio.Risk_metrics</code>.</td></tr><tr><td><code>Parametric_normal</code></td><td>Returns approximately normal; need fast</td><td><code>VaR = -(mu + sigma * Phi^{-1}(1-alpha))</code>. O(n) for sample stats.</td></tr><tr><td><code>Cornish_fisher</code></td><td>Returns have known skew / fat tails (n ≥ 100)</td><td>Adjusts the normal quantile via Cornish-Fisher expansion in skew &amp; kurtosis. Falls back to <code>Parametric_normal</code> for degenerate samples.</td></tr><tr><td><code>Garch_forecast g</code></td><td>Forward-looking, regime-aware</td><td>Replaces sample sigma with <code>Garch11.current_variance g</code>. Captures volatility clustering.</td></tr></tbody></table></div></div><p>All four return the same <code>result</code> record so callers can switch methods without changing call-site shape. <code>method_used : string</code> records which path actually ran for audit logging. Coarse-precision caveat carries over from <code>Advanced_models.Special</code>.</p><h3>Worked example</h3><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">open Algostream_risk_management
+
+(* Historical: backtest-style *)
+let h = Var.compute ~method_:Var.Historical ~returns ~portfolio_value:100_000.0
+          ~confidence:0.95 ~horizon_days:1
+
+(* Parametric for fast path *)
+let p = Var.compute ~method_:Var.Parametric_normal ~returns ~portfolio_value:100_000.0
+          ~confidence:0.95 ~horizon_days:1
+
+(* GARCH-forecast for forward-looking risk *)
+match Algostream_advanced_models.Garch11.fit ~returns () with
+| Ok fit_res -&gt;
+  let garch = Algostream_advanced_models.Garch11.of_fit fit_res
+                ~last_return:returns.(Array.length returns - 1)
+                ~last_variance:fit_res.long_run_variance in
+  let g = Var.compute ~method_:(Var.Garch_forecast garch) ~returns
+            ~portfolio_value:100_000.0 ~confidence:0.95 ~horizon_days:1
+| Error _ -&gt; ...</code></pre></div></section><section id="drawdown-tracker"><h2><span class="num">03</span>Drawdown tracker</h2><p><code>Drawdown.Tracker.t</code> is the streaming online complement to <code>Portfolio.Risk_metrics.calculate_maximum_drawdown</code> (which computes max DD offline). Maintains running peak, current DD, max DD, and time-under-water in nanoseconds.</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let t = Drawdown.Tracker.create ~initial_equity:100_000.0 () in
+Drawdown.Tracker.update t ~equity:110_000.0 ~ts_ns:1_000_000L;
+Drawdown.Tracker.update t ~equity:95_000.0  ~ts_ns:2_000_000L;
+(* current_drawdown t = (110_000 - 95_000) / 110_000 ≈ 0.136 *)
+(* time_under_water_ns t = 1_000_000L (ns since equity dropped below peak) *)</code></pre></div><p>Out-of-order <code>ts_ns</code> updates are silently ignored — no rewinding the peak.</p></section><section id="correlation-breakdown-detector"><h2><span class="num">04</span>Correlation breakdown detector</h2><!-- Replaces the `flowchart LR` at docs/guides/risk_management.md:95. -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Correlation breakdown</span>
+    <span>4 statuses</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 1020 300" role="img"
+         aria-label="Correlation updates feed a slow baseline EWMA and a fast current EWMA. Their absolute difference, plus a sign-flip test on the current value, decide a status of Stable, Weakening, Broken down or Sign flipped.">
+      <defs>
+        <marker id="ah-rm1" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <rect class="d-node-a" x="16" y="122" width="160" height="52" rx="2"/>
+      <text class="d-title" x="32" y="145">correlation</text>
+      <text class="d-title" x="32" y="162">updates</text>
+
+      <rect class="d-node" x="240" y="40" width="170" height="50" rx="2"/>
+      <text class="d-title" x="256" y="62">baseline EWMA</text>
+      <text class="d-sub"   x="256" y="79">slow</text>
+
+      <rect class="d-node" x="240" y="206" width="170" height="50" rx="2"/>
+      <text class="d-title" x="256" y="228">current EWMA</text>
+      <text class="d-sub"   x="256" y="245">fast</text>
+
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M176,140 C 205,140 210,65 234,65"/>
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M176,158 C 205,158 210,231 234,231"/>
+
+      <rect class="d-node" x="470" y="40" width="200" height="50" rx="2"/>
+      <text class="d-title" x="486" y="71">diff = |base − curr|</text>
+
+      <rect class="d-node" x="470" y="196" width="200" height="68" rx="2"/>
+      <text class="d-title" x="486" y="220">sign(base) ≠ sign(curr)</text>
+      <text class="d-title" x="486" y="240">AND |curr| &gt; threshold</text>
+
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M410,65  L464,65"/>
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M410,222 C 435,222 440,65 464,65"/>
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M410,240 L464,240"/>
+
+      <polygon class="d-node-a" points="770,110 828,150 770,190 712,150"/>
+      <text class="d-title" x="770" y="155" text-anchor="middle">Status</text>
+
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M670,65  C 700,65  710,130 726,138"/>
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M670,230 C 700,230 710,170 726,162"/>
+
+      <rect class="d-node" x="876" y="26" width="132" height="38" rx="2"/>
+      <text class="d-title" x="890" y="50">Stable</text>
+      <rect class="d-node" x="876" y="86" width="132" height="38" rx="2"/>
+      <text class="d-title" x="890" y="110">Weakening</text>
+      <rect class="d-node" x="876" y="176" width="132" height="38" rx="2"/>
+      <text class="d-title" x="890" y="200">Broken_down</text>
+      <rect class="d-node" x="876" y="236" width="132" height="38" rx="2"/>
+      <text class="d-title" x="890" y="260">Sign_flipped</text>
+
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M828,144 C 850,144 852,45  870,45"/>
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M828,148 C 850,148 852,105 870,105"/>
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M828,152 C 850,152 852,195 870,195"/>
+      <path class="d-edge" marker-end="url(#ah-rm1)" d="M828,156 C 850,156 852,255 870,255"/>
+    </svg>
+  </div>
+</div><p>Two EWMAs over the correlation feed. Default <code>baseline_period = 60</code>, <code>current_period = 10</code>, <code>breakdown_threshold = 0.3</code>. Status ladder:</p><ul><li><code>Stable</code> — diff &lt; threshold/2</li><li><code>Weakening</code> — threshold/2 ≤ diff &lt; threshold</li><li><code>Broken_down</code> — diff ≥ threshold</li><li><code>Sign_flipped</code> — overrides others when baseline &amp; current have opposite signs AND |current| &gt; threshold</li></ul><p>Built on <code>Algostream_analytics.Filters.Ewma</code>.</p></section><section id="circuit-breaker"><h2><span class="num">05</span>Circuit breaker</h2><p>State machine mirroring <code>lib/data_ingestion/connection_supervisor.ml</code>:</p><div class="code" data-label="output"><pre><code>Active ─trigger→ Tripped ─cooldown_ns elapsed→ Recovering ─reset→ Active</code></pre></div><p>Triggers checked in order on each <code>evaluate</code> (first hit wins):</p><ol><li><code>Drawdown_breach</code> — current drawdown &gt; <code>max_drawdown</code></li><li><code>Daily_loss_breach</code> — negated daily PnL &gt; <code>max_daily_loss</code></li><li><code>Leverage_breach</code> — leverage &gt; <code>max_leverage</code></li><li><code>Vol_spike</code> — realized_vol / baseline_vol &gt; <code>vol_spike_ratio</code></li><li><code>Manual</code> — via <code>trip_manual ~reason ~ts_ns</code></li></ol><p><code>is_tripped</code> returns true in both <code>Tripped</code> and <code>Recovering</code> states — callers must explicitly <code>reset</code> to return to <code>Active</code> (or wait + reset for safer recovery).</p><p>Cooldown is in <strong>event time</strong> (deterministic under replay). Production wall-clock-driven recovery is a strategy-side concern.</p></section><section id="risk-limits-amp-pre-trade-checks"><h2><span class="num">06</span>Risk limits &amp; pre-trade checks</h2><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type t = {
+  max_drawdown : float;                    (* gate + Monitor *)
+  max_daily_loss : float;                  (* gate + Monitor *)
+  max_leverage : float;
+  max_var_pct : float;                     (* Monitor only *)
+  max_position_concentration : float;
+  max_gross_exposure : float;              (* gate only *)
+  correlation_breakdown_threshold : float; (* Correlation_breakdown.Detector *)
+}
+
+val default : t
+
+val pre_trade_check
+  : t -&gt; portfolio:Portfolio.portfolio
+  -&gt; proposed_order:Order.order -&gt; ?proposed_price:float
+  -&gt; ?current_drawdown:float -&gt; ?daily_pnl_pct:float -&gt; unit
+  -&gt; breach list</code></pre></div><p>Returns an empty list when within limits. When <code>~proposed_price</code> is supplied, it simulates the order's effect on per-symbol concentration and gross exposure and reports breaches the trade <em>would</em> create.</p><h3>Path-dependent limits</h3><p>Drawdown and daily loss cannot be computed from a portfolio snapshot — both need history the snapshot does not carry. Rather than give this module state, the gate takes them as scalars and the caller owns the tracking. <code>Drawdown.Tracker</code> already does exactly that, and both call sites hold one: <code>Backtest.Engine</code> and <code>Runtime.Instance</code>. The comparisons match <code>Monitor.update</code>, so the pre-trade gate and the monitoring snapshot cannot disagree about whether a limit is breached.</p><p>Omitting the two arguments defaults them to <code>0.0</code>, which <strong>disables</strong> those checks rather than tripping them — every caller that has not been updated keeps its previous behaviour.</p><div class="callout"><span class="q">This was broken until recently, and it is worth knowing why the fix matters.</span><p><code>pre_trade_check</code>
+saw only a snapshot, so it could emit <code>Leverage</code>, <code>Gross_exposure</code> and <code>Position_concentration</code>
+and nothing else. <code>Monitor</code> constructed the drawdown, daily-loss and VaR breaches — but <code>Monitor</code>
+is wired into neither the backtest engine nor any strategy. The net effect was that
+<code>max_drawdown</code> was read by nothing on the trading path: setting it changed no behaviour, and a
+backtest comparing "risk limits on" against "risk limits off" would have reported a difference of
+exactly zero. <code>test/backtest/test_engine.ml</code> now runs one scenario at two ceilings and asserts the
+tighter one rejects, which is what makes the limit's effect attributable.</p></div><p>Three fields were removed rather than left as advertisements for control that did not exist: <code>max_asset_class_concentration</code> and its <code>Asset_class_concentration</code> breach had no producer anywhere, and <code>vol_spike_ratio</code> duplicated <code>Circuit_breaker.config</code>'s field of the same name, which is the one actually read. <code>correlation_breakdown_threshold</code> was in the same state — <code>Monitor</code> built its detectors with library defaults and silently discarded the configured value — and is now passed through, so tuning it does something.</p><p><code>max_var_pct</code> stays <code>Monitor</code>-only: a VaR gate needs a return distribution that the pre-trade path does not have.</p><h3>Risk-reducing orders are never blocked</h3><p>The gate runs on every submit, including the order that closes a position. An earlier version blocked those too, which made the drawdown limit <strong>actively harmful</strong>: once equity breached the ceiling the strategy could not exit the position that caused the breach, so the loss the limit existed to cap ran on unbounded.</p><p>Measured on an hour of real Coinbase BTC/ETH ticks, with a ceiling set low enough to bind:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th></th><th>limits off</th><th>limits on, exits blocked</th><th>limits on, exits exempt</th></tr></thead><tbody><tr><td>max drawdown</td><td>baseline</td><td><strong>+1713%</strong></td><td><strong>−36.6%</strong></td></tr><tr><td>total return</td><td>baseline</td><td><strong>−2278%</strong></td><td><strong>+2.9%</strong></td></tr><tr><td>orders rejected</td><td>—</td><td>10 of 12</td><td>4 of 12</td></tr></tbody></table></div></div><p>(The −36.6% is at one particular equity-sampling interval; see the caveat below before quoting it.)</p><p><code>pre_trade_check</code> therefore returns <code>[]</code> immediately for an order that moves the position towards flat. "Towards flat" is deliberately strict — opposite in sign to the holding and no larger than it. An order that crosses through flat and opens the other side is an entry wearing a reduction's clothes and is gated normally, or a strategy could take unlimited new risk by routing it through a reversal.</p><div class="callout"><span class="q">What this does not show.</span><p>Those percentages are ratios of very small numbers: the absolute
+drawdown on that capture is under 0.01% of NAV over 12 fills, and the ceiling had to be set far
+below any realistic value to bind at all. The direction is right and the mechanism is verified;
+the 30% drawdown-improvement target still needs a horizon over which the strategy takes real
+drawdown.</p></div><h3>Drawdown tracking is decoupled from equity sampling</h3><p>The running peak is fed on <strong>every event</strong>, not from the equity-sampling callback. <code>equity_sample_interval_ns</code> (and <code>nav_sample_interval_ns</code> on the live side) bounds how much equity history is <em>stored</em>; it must not decide how accurately risk is measured.</p><p>When the two shared one call, a coarse interval left the peak stale, the gate saw a smaller drawdown than had occurred, and it admitted orders it should have refused — a logging setting silently changing trading decisions. The same capture at the same ceiling rejected 4 orders at a 10 s interval and 2 at 60 s. It is now 4 at every interval from 1 s to 60 s, and <code>test/backtest/test_engine.ml</code> pins that with a scenario where NAV rises between two coarse samples before falling.</p><p>The <em>reported</em> reduction still varies with the interval — 1.6% at 1 s to 80.3% at 60 s — because <code>Metrics.of_nav</code> can only measure the drawdown present in the sampled curve. That is inherent to sampled measurement rather than a defect, and it is the main reason no single percentage from this dataset is worth quoting.</p></section><section id="monitor-putting-it-together"><h2><span class="num">07</span>Monitor — putting it together</h2><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let m = Monitor.create
+          ~limits:Risk_limits.default
+          ~circuit_config:{
+            max_drawdown = 0.20; max_daily_loss = 0.05;
+            max_leverage = 3.0; vol_spike_ratio = 5.0;
+            cooldown_ns = 10_000_000_000L;  (* 10s event time *)
+          }
+          ~initial_equity:100_000.0
+          ()
+
+(* Each tick / bar, strategy calls: *)
+let snap = Monitor.update m
+             ~portfolio
+             ~returns
+             ~correlation_updates:[ ("BTC", "ETH", current_pair_corr) ]
+             ~garch:fitted_garch_or_omit
+             ~ts_ns:current_event_ts
+             ()
+
+(* Cross-Domain readers do: *)
+let snap = Atomic.get (Monitor.snapshot_atomic m)
+
+(* Gate the strategy on snap.circuit_breaker_state / snap.breaches *)
+if Circuit_breaker.is_tripped (
+  match snap.circuit_breaker_state with
+  | Active -&gt; false | _ -&gt; true |&gt; ignore;
+  Monitor.circuit_breaker_state m
+)
+then halt_new_orders ()</code></pre></div><p><code>update</code> re-runs all the math and publishes a fresh <code>Risk_snapshot.t</code> via <code>Atomic.set</code> in one call. Strategy and risk-display Domains read via <code>Atomic.get</code> on <code>snapshot_atomic</code> — race-free, no torn reads.</p></section><section id="event-time-invariant"><h2><span class="num">08</span>Event-time invariant</h2><p>CI <code>for dir in …</code> clock-lint loop covers <code>lib/risk_management</code> (<code>make risk-clock-lint</code> locally). All time inputs are explicit <code>int64</code> ns parameters — no <code>Clock.now_*</code>, no <code>Unix.gettimeofday</code>. The portfolio circuit breaker's cooldown is in event time so replay is deterministic; strategies that want wall-clock recovery (e.g., "auto-reset after 10 real seconds") schedule that externally.</p></section><section id="composite-risk-score-proprietary-models"><h2><span class="num">09</span>Composite risk score (Proprietary_models)</h2><p>The per-dimension signals are useful on their own, but strategies usually want a single number to drive graduated risk responses. <code>Proprietary_models</code> bundles them.</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let snap = Monitor.update m ~portfolio ~returns ~ts_ns () in
+let score = Proprietary_models.from_snapshot
+              ~snapshot:snap
+              ~limits:Risk_limits.default
+              ~realized_vol:(Monitor.realized_vol m)
+              ~baseline_vol:(Monitor.baseline_vol m)
+              ()
+
+(* Graduated response *)
+match score.level with
+| Critical -&gt; halt_strategy ()
+| High     -&gt; reduce_position_size_by 0.5
+| Moderate -&gt; tighten_stops_by 0.3
+| Low      -&gt; proceed_normally ()</code></pre></div><p>Each of the five components — <code>var_component</code>, <code>drawdown_component</code>, <code>leverage_component</code>, <code>correlation_component</code>, <code>circuit_component</code> — is normalized to <code>[0, 1]</code> (0 = well within limit, 1 = at or beyond limit). The <code>composite</code> is the weighted average (default weights bias toward forward-looking signals: VaR 0.30 + drawdown 0.25 + leverage / correlation / circuit 0.15 each). Strategies override <code>~weights</code> when they have a different risk philosophy.</p><p>The independent <code>vol_regime</code> classification:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Regime</th><th>realized / baseline ratio</th></tr></thead><tbody><tr><td><code>Calm</code></td><td>&lt; 0.5</td></tr><tr><td><code>Normal</code></td><td>0.5 ≤ ratio &lt; 1.5</td></tr><tr><td><code>Elevated</code></td><td>1.5 ≤ ratio &lt; 3.0</td></tr><tr><td><code>Stressed</code></td><td>≥ 3.0</td></tr></tbody></table></div></div><p>This is independent of the <code>composite</code> so a strategy can reduce size when vol gets <code>Elevated</code> even before the limits are formally breached.</p></section><section id="tests-benchmarks"><h2><span class="num">10</span>Tests + benchmarks</h2><div class="code" data-label="bash"><pre><code>dune runtest test/risk_management        # 40 tests across 9 suites
+make risk-clock-lint
+make risk-bench                          # Apple Silicon: parametric ~158k ev/s,
+                                         # historical ~41k ev/s, drawdown ~60M ev/s,
+                                         # monitor ~76k ev/s</code></pre></div><p>The bench is registered in <code>.github/workflows/benchmark.yml</code> and posts to gh-pages.</p></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="order-management.html"><span class="dir">← previous</span><span>Order Management</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="backtesting.html"><span class="dir">next →</span><span>Backtesting</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ risk_management.md
+│ 10 sections · 4 tables · 8 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        strategy · 10 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

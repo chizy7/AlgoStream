@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Getting Started — AlgoStream</title>
+  <meta name="description" content="Building AlgoStream, running the tests, and getting a live dashboard in front of you.">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Getting Started — AlgoStream">
+  <meta property="og:description" content="Building AlgoStream, running the tests, and getting a live dashboard in front of you.">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">getting started</span>
+      </div>
+      <div class="group">
+        <span>foundations</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Foundations</p>
+        <h1>getting <span class="accent">started</span></h1>
+        <p class="lede">Building AlgoStream, running the tests, and getting a live dashboard in front of you.</p>
+        <div class="guide-meta"><span><span class="k">toolchain</span>OCaml 5.x · dune 3.16</span><span><span class="k">covers</span>build · test · profile</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/getting_started.md" rel="noopener">getting_started.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#prerequisites">Prerequisites</a></li><li><a href="#installation">Installation</a></li><li><a href="#build-and-test">Build and test</a></li><li><a href="#run-it">Run it</a></li><li><a href="#run-a-backtest">Run a backtest</a></li><li><a href="#benchmarks">Benchmarks</a></li><li><a href="#profiling">Profiling</a></li><li><a href="#where-to-go-next">Where to go next</a></li><li><a href="#troubleshooting">Troubleshooting</a></li></ol>
+        </nav>
+        <article class="prose">
+          <section class="intro"><p><strong>AlgoStream is paper trading.</strong> There is no venue connectivity anywhere in the project — no credentials, no request signing, no trading endpoint. Every fill is simulated against live quotes. Nothing in this guide, or anywhere else, will place a real order.</p></section>
+          <section id="prerequisites"><h2><span class="num">01</span>Prerequisites</h2><ul><li><strong>OCaml 5.1.x</strong> recommended; 5.0.x is supported and both are in the CI matrix. The project uses <code>Domain</code> throughout, so 4.x will not build it.</li><li><strong>opam</strong> for package management.</li><li><strong>Docker</strong> — optional, needed only for <code>perf</code>/<code>valgrind</code> profiling on macOS and for the observability stack.</li></ul></section><section id="installation"><h2><span class="num">02</span>Installation</h2><div class="code" data-label="bash"><pre><code>git clone https://github.com/chizy7/AlgoStream.git
+cd AlgoStream</code></pre></div><p>The fastest path uses the bundled setup script, which creates a local switch in <code>_opam/</code> and installs everything including the dev tools:</p><div class="code" data-label="bash"><pre><code>./scripts/setup-dev.sh
+eval $(opam env)</code></pre></div><p>The manual equivalent:</p><div class="code" data-label="bash"><pre><code>opam switch create . ocaml-base-compiler.5.1.1
+eval $(opam env)
+opam install . --deps-only --with-test --with-dev-setup</code></pre></div><div class="callout"><p>If <code>make</code> fails with <code>Library ... not found</code>, the shell is almost certainly on a 4.x switch.
+<code>eval $(opam env)</code> from the project root fixes it.</p></div></section><section id="build-and-test"><h2><span class="num">03</span>Build and test</h2><div class="code" data-label="bash"><pre><code>make build           # dune build
+make test            # dune runtest — 709 alcotest cases
+make fmt             # dune build @fmt --auto-promote
+make fmt-check       # CI-style check; fails rather than fixing</code></pre></div><p>A fresh build takes well under a minute; the test suite runs in a few seconds.</p></section><section id="run-it"><h2><span class="num">04</span>Run it</h2><p>The quickest look at a working system:</p><div class="code" data-label="bash"><pre><code>make dash</code></pre></div><p>Then open <strong>http://127.0.0.1:8080/dashboard/</strong> — note the path, since <code>/</code> is the landing page. The daemon connects to public exchange feeds, runs a pairs strategy against them, and pushes state to the browser over SSE at 4 Hz.</p><p>Without a keystore the API serves unauthenticated and binds loopback only. To turn authentication on:</p><div class="code" data-label="bash"><pre><code>algostream-keyctl add --label laptop --scopes read,control    # printed once; only its hash is stored
+
+dune exec bin/algostream.exe -- \
+  --auth-keys ~/.config/algostream/keys.json \
+  --audit-dir /tmp/algostream-audit \
+  --static site/ --http-port 8080</code></pre></div><p>The dashboard then prompts for the key. A <code>read</code>-scoped key streams live but leaves the control buttons disabled; a <code>control</code> key enables them. See the <a href="security.html">security guide</a>.</p><p><code>dune exec bin/algostream.exe -- --help</code> lists every flag.</p></section><section id="run-a-backtest"><h2><span class="num">05</span>Run a backtest</h2><p>Generate a deterministic fixture and replay it through the engine:</p><div class="code" data-label="bash"><pre><code>make fixture OUT=/tmp/fixture.log BARS=5000
+dune exec bin/backtest.exe -- --log /tmp/fixture.log --y BTCUSDT --x ETHUSDT</code></pre></div><p>The engine reports fills, NAV and the usual performance statistics. The same <code>Strategy.S</code> runs unchanged against the live runtime — <code>test/runtime/test_parity.exe</code> asserts the two produce identical results from one fixture, which is what makes a backtest here worth anything.</p><p>See <a href="backtesting.html">backtesting</a> and <a href="strategy-development.html">writing a strategy</a>.</p></section><section id="benchmarks"><h2><span class="num">06</span>Benchmarks</h2><div class="code" data-label="bash"><pre><code>make bench           # core performance suite
+make bench-json      # same, writing bench_results.json in the CI schema
+make paced-bench     # event-bus latency at a stated offered load</code></pre></div><p><code>paced-bench</code> is the number to quote for latency: it offers a fixed rate (50,000 ev/s by default) and reports the distribution under that load. The other latency benchmark saturates the bus on purpose and therefore reports queueing delay in the tens of milliseconds — both are real, but they answer different questions. <a href="operations.html">Operations</a> explains the distinction.</p></section><section id="profiling"><h2><span class="num">07</span>Profiling</h2><p><code>perf</code>, <code>valgrind</code> and <code>gprof</code> are Linux-only, so on macOS they live in the dev container:</p><div class="code" data-label="bash"><pre><code>make docker-dev      # builds Dockerfile.dev and brings the container up
+make docker-shell    # bash into it</code></pre></div><p>Inside:</p><div class="code" data-label="bash"><pre><code>make perf-record                                          # writes perf.data
+make valgrind-massif                                      # heap profile
+make memtrace BIN=bin/event_replay.exe ARGS="--log-file replay.bin"</code></pre></div><p>The dev container grants passwordless sudo and runs with <code>seccomp:unconfined</code> so the profilers work. That is correct for development and disqualifying for anything else — the production image is a separate <code>Dockerfile</code>. See <a href="deployment.html">deployment</a>.</p></section><section id="where-to-go-next"><h2><span class="num">08</span>Where to go next</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>If you want to</th><th>Read</th></tr></thead><tbody><tr><td>Write a strategy</td><td><a href="strategy-development.html">Writing a strategy</a></td></tr><tr><td>Understand the event bus</td><td><a href="event-bus.html">Event bus</a></td></tr><tr><td>Know what the domain types guarantee</td><td><a href="domain-models.html">Domain models</a></td></tr><tr><td>Run it somewhere other than your laptop</td><td><a href="deployment.html">Deployment</a></td></tr><tr><td>Turn on authentication and the audit trail</td><td><a href="security.html">Security</a></td></tr><tr><td>Diagnose something that has gone wrong</td><td><a href="operations.html">Operations runbook</a></td></tr></tbody></table></div></div></section><section id="troubleshooting"><h2><span class="num">09</span>Troubleshooting</h2><p><strong><code>Library "..." not found</code></strong> — the active switch is not the project's. Run <code>eval $(opam env)</code> from the project root.</p><p><strong>Build failures after pulling</strong> — <code>dune clean &amp;&amp; dune build</code>. If the tree contains files named <code>foo 2.ml</code>, they are sync-conflict copies and will break the build; delete them.</p><p><strong>The dashboard shows "recorded snapshot"</strong> — the page probed <code>/api/health</code>, nothing answered, and it fell back to the bundled demo fixture. Either the daemon is not running or the port differs.</p><p><strong>Latency looks terrible</strong> — check the source first: <code>curl -s localhost:8080/api/telemetry | jq .source</code>. On a replay, latency is measured as <code>now - event.timestamp</code>, so it reports the age of the log rather than a delivery time.</p><p><strong>Everything returns 401</strong> — the daemon has a keystore and the request has no usable credential. <code>curl -s localhost:8080/api/health | jq .auth_required</code> confirms whether authentication is on.</p><p><strong><code>--replay</code> raises <code>event_log: header truncated</code></strong> — it needs a real event log, not an empty file or <code>/dev/null</code>. Make one with <code>make fixture OUT=/tmp/f.log BARS=5000</code>.</p><p><strong><code>--pin-cores</code> does nothing on macOS</strong>, and says so. Pinning is <code>sched_setaffinity</code>, which is Linux-only; macOS's <code>THREAD_AFFINITY_POLICY</code> is an advisory hint that Apple Silicon ignores, so the call reports <code>Unsupported</code> rather than a success it did not achieve.</p></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="strategy-development.html"><span class="dir">next →</span><span>Writing a Strategy</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ getting_started.md
+│ 9 sections · 1 tables · 10 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        foundations · 9 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

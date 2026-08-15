@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Event Bus — AlgoStream</title>
+  <meta name="description" content="algostream.infrastructure.event_bus is the event-driven infrastructure layer. It provides a multi-band priority queue, a predicate-based filter/subscription system, an append-only ">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Event Bus — AlgoStream">
+  <meta property="og:description" content="algostream.infrastructure.event_bus is the event-driven infrastructure layer. It provides a multi-band priority queue, a predicate-based filter/subscription system, an append-only ">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">event bus</span>
+      </div>
+      <div class="group">
+        <span>foundations</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Foundations</p>
+        <h1>event <span class="accent">bus</span></h1>
+        <p class="lede"><code>algostream.infrastructure.event_bus</code> is the event-driven infrastructure layer. It provides a multi-band priority queue, a predicate-based filter/subscription system, an append-only binary log with replay, and four named latency hookpoints that surface publish-to-handler statistics in real time.</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/infrastructure/event_bus/</span><span><span class="k">queue</span>4 priority bands · lock-free</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/event_bus.md" rel="noopener">event_bus.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#concepts">Concepts</a></li><li><a href="#quick-start">Quick start</a></li><li><a href="#priority-bands">Priority bands</a></li><li><a href="#filtering">Filtering</a></li><li><a href="#persisting-and-replaying-events">Persisting and replaying events</a></li><li><a href="#latency-instrumentation">Latency instrumentation</a></li><li><a href="#memory-profiling">Memory profiling</a></li><li><a href="#continuous-benchmarking">Continuous benchmarking</a></li><li><a href="#performance-numbers-reference">Performance numbers (reference)</a></li><li><a href="#known-limitations">Known limitations</a></li><li><a href="#where-to-look-in-the-source">Where to look in the source</a></li></ol>
+        </nav>
+        <article class="prose">
+          <section class="intro"><p>This guide covers everything you need to publish, subscribe, persist, replay, and instrument events.</p><hr></section>
+          <section id="concepts"><h2><span class="num">01</span>Concepts</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Concept</th><th>Module</th><th>Purpose</th></tr></thead><tbody><tr><td><code>Event.t</code></td><td><code>Event_types</code></td><td>Immutable record carrying a <code>payload</code>, <code>priority</code>, <code>timestamp_ns</code>, <code>sequence_id</code>, and <code>source</code> string. Derives <code>bin_io</code> + <code>sexp</code>.</td></tr><tr><td><code>Priority</code></td><td><code>Event_types</code></td><td><code>Critical / High / Normal / Low</code> (4 bands; lower index = higher priority).</td></tr><tr><td><code>Filter.t</code></td><td><code>Subscription</code></td><td>Predicate combinators evaluated once per dispatch.</td></tr><tr><td><code>Event_bus.t</code></td><td><code>Event_bus</code></td><td>Facade owning the priority queue + dispatcher <code>Domain</code>.</td></tr><tr><td><code>Event_log</code></td><td><code>Event_log</code></td><td>Append-only binary log with CRC32-protected frames.</td></tr><tr><td><code>Instrumentation.t</code></td><td><code>Instrumentation</code></td><td>4 latency hookpoints over <code>Time_utils.LatencyMonitor</code>.</td></tr><tr><td><code>Memory_monitor.t</code></td><td><code>Memory_monitor</code></td><td><code>Gc.quick_stat</code> sampler + <code>memtrace</code> init.</td></tr></tbody></table></div></div><p>The bus is single-process. Per-subscriber async queues are a planned follow-up; today, handlers run synchronously inside the dispatcher domain — keep them short.</p><hr></section><section id="quick-start"><h2><span class="num">02</span>Quick start</h2><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">open Algostream_infrastructure_event_bus
+
+let () =
+  let bus = Event_bus.create () in
+
+  let _id =
+    Event_bus.subscribe bus (fun e -&gt;
+      Printf.printf "got seq=%Ld pri=%s\n"
+        e.sequence_id
+        (Event_types.Priority.to_string e.priority))
+  in
+
+  Event_bus.start bus;
+
+  for _ = 1 to 1000 do
+    Event_bus.publish bus
+      (Event_types.Event.create
+         ~priority:Event_types.Priority.High
+         Event_types.Event.Heartbeat)
+  done;
+
+  (* let the dispatcher drain *)
+  Algostream_common_utils.Time_utils.Sleep.sleep_ms 50L;
+
+  Event_bus.stop bus;
+  print_endline (Instrumentation.pp_stats (Event_bus.stats bus))</code></pre></div><p><code>Event_bus.create</code> defaults to <code>capacity_per_band:4096</code> and an SLA threshold of 5 ms; both are tunable. The bus is created in the <em>stopped</em> state — you must call <code>start</code> before the dispatcher domain runs. <code>stop</code> is registered automatically as an <code>at_exit</code> hook on first start, so a missed call won't leave an orphan domain.</p><hr></section><section id="priority-bands"><h2><span class="num">03</span>Priority bands</h2><p>Bands are tried in strict order: every event in <code>Critical</code> is delivered before the dispatcher consults <code>High</code>, and so on. This keeps shutdown and risk-alert events ahead of routine market data, but admits theoretical starvation of <code>Low</code> under sustained <code>Critical</code> traffic. Round-robin / token quotas are a documented follow-up.</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">Event_bus.publish bus
+  (Event_types.Event.create
+     ~priority:Event_types.Priority.Critical
+     (Event_types.Event.Risk_alert
+        { code = "VAR_BREACH"; message = "limit breached"; severity = 3 }))</code></pre></div><p><code>try_publish</code> returns <code>false</code> if the matching band is full; <code>publish</code> is a fire-and-forget convenience.</p><hr></section><section id="filtering"><h2><span class="num">04</span>Filtering</h2><p>Filters are predicate combinators — closures evaluated once per dispatch, no string allocations on the hot path.</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">open Subscription.Filter
+
+(* Only AAPL ticks at High priority or above *)
+let f = and_ (by_symbol "AAPL") (min_priority Event_types.Priority.High)
+
+let _id = Event_bus.subscribe_filtered bus f handle_tick</code></pre></div><p>Available combinators: <code>any</code>, <code>by_priority</code>, <code>min_priority</code>, <code>by_source</code>, <code>by_message_type</code> (uses <code>Zero_copy.MessageType</code> codes), <code>by_symbol</code>, <code>and_</code>, <code>or_</code>, <code>not_</code>, <code>custom</code>.</p><p><code>by_symbol</code> works for <code>Market_tick</code>, <code>Order_request</code>, <code>Trade_execution</code>, and <code>Strategy_signal</code> payloads (returns <code>false</code> for <code>Heartbeat</code>, <code>Shutdown</code>, <code>Raw</code>, etc.).</p><hr></section><section id="persisting-and-replaying-events"><h2><span class="num">05</span>Persisting and replaying events</h2><p>The event log is an append-only binary file using bin_prot framing. Header is 64 bytes, magic <code>0x41534454</code> ("ASDT"); each frame is <code>[u32 length | u32 crc32 | bin_prot bytes]</code>.</p><div class="callout"><span class="q">Schema versions</span><p>: writer emits <strong>v3</strong> (added the <code>Trade_print</code>
+and <code>Data_gap</code> payload constructors). The reader accepts v2 and v3
+headers — old v2 logs continue to replay against the current code, but
+v3 logs cannot be opened by binaries built before log format v3 (the new payload tags
+would deserialize as garbage). Constructor <em>additions</em> go at the end
+of the variant; renaming or reordering still requires another version
+bump.</p></div><h3>Writing</h3><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let writer = Event_log.Writer.create "session.log" in
+Event_log.Writer.append writer event;
+(* ... *)
+Event_log.Writer.close writer  (* rewrites the header with final counts *)</code></pre></div><h3>Reading</h3><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let reader = Event_log.Reader.open_ "session.log" in
+let n = Event_log.Reader.iter reader (fun e -&gt; handle e) in
+Event_log.Reader.close reader;
+Printf.printf "read %d events\n" n</code></pre></div><p><code>iter</code> stops cleanly on EOF or the first bad CRC — partial-write recovery is built in.</p><h3>Replaying into a fresh bus</h3><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let n =
+  Event_log.replay bus
+    ~path:"session.log"
+    ~speed:10.0       (* 10x real-time; default Float.infinity = ASAP *)
+    ~filter:(Subscription.Filter.by_symbol "AAPL")
+    ()</code></pre></div><p>The CLI wrapper:</p><div class="code" data-label="bash"><pre><code>make replay LOG=session.log SPEED=1.0
+# or directly:
+dune exec bin/event_replay.exe -- --log-file session.log --speed 1.0 --print</code></pre></div><hr></section><section id="latency-instrumentation"><h2><span class="num">06</span>Latency instrumentation</h2><p>Every event records four phase-bracketed measurements:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Phase</th><th>What it measures</th></tr></thead><tbody><tr><td><code>Publish_to_enqueue</code></td><td>producer call → ring-buffer push completed</td></tr><tr><td><code>Enqueue_to_dispatch</code></td><td>event sat in queue → dispatcher popped it</td></tr><tr><td><code>Dispatch_to_handler</code></td><td>per-subscriber handler runtime</td></tr><tr><td><code>End_to_end</code></td><td>producer publish → last subscriber returned</td></tr></tbody></table></div></div><p>Each phase has its own <code>LatencyMonitor</code> (sliding window 4096, SLA threshold 5 ms by default). Snapshot:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let s = Event_bus.stats bus in
+Printf.printf "max end-to-end = %Ldns (avg %Ldns, SLA violations: %d)\n"
+  s.end_to_end.max_ns s.end_to_end.avg_ns s.end_to_end.violations</code></pre></div><p><code>phase_stats</code> carries <code>count</code>, <code>avg_ns</code>, <code>max_ns</code> and <code>violations</code> — <strong>there are no percentiles here</strong>. The <code>p50/p95/p99</code> figures on the benchmark dashboard are computed by the bench itself (<code>test/performance/event_bus_latency.ml</code>) from a raw sample array. For live percentiles use <code>Algostream_telemetry.Histogram</code>, which the collector feeds from the same hookpoints.</p><p>To disable instrumentation in a hot path (e.g. production):</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">Instrumentation.set_enabled (Event_bus.instrumentation bus) false</code></pre></div><p>The hot-path cost when enabled is 4 × <code>Clock.now_monotonic_ns ()</code> per event (~80 ns total on modern hardware).</p><hr></section><section id="memory-profiling"><h2><span class="num">07</span>Memory profiling</h2><p>Two cooperating layers, both wired through <code>Memory_monitor</code>:</p><h3><code>Gc.quick_stat</code> sampler (always available)</h3><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let mm = Memory_monitor.create () in
+Memory_monitor.start ~interval_ms:1000 mm;
+(* ... *)
+match Memory_monitor.latest mm with
+| Some s -&gt; print_endline (Memory_monitor.pp_sample s)
+| None -&gt; print_endline "no samples yet"</code></pre></div><p>Records minor/promoted/major/heap/live/free words and stack size every <code>interval_ms</code> (default 1000 ms). Atomic-load on <code>latest</code>; cheap.</p><h3><code>memtrace</code> (optional, env-gated)</h3><div class="code" data-label="bash"><pre><code>MEMTRACE=trace.ctf dune exec bin/event_replay.exe -- --log-file session.log
+# then:
+opam install memtrace_viewer
+memtrace-viewer trace.ctf</code></pre></div><p>Call <code>Memory_monitor.init_memtrace ()</code> once at process start (e.g. in <code>main</code>); it inspects <code>MEMTRACE</code> and starts CTF tracing at sampling rate 1e-4 if set, otherwise no-op.</p><hr></section><section id="continuous-benchmarking"><h2><span class="num">08</span>Continuous benchmarking</h2><p><code>bin/benchmark.exe</code> and the two <code>test/performance/</code> binaries all accept <code>--json PATH</code> and emit results in the <a href="https://github.com/benchmark-action/github-action-benchmark#examples" rel="noopener"><code>customSmallerIsBetter</code></a> schema:</p><div class="code" data-label="json"><pre><code>[
+  {
+    "name": "event_bus.publish_to_handler.p99",
+    "unit": "ns",
+    "value": 3436032,
+    "extra": "n=50000"
+  }
+]</code></pre></div><p>CI runs all three on every push to <code>main</code> and every PR (<code>.github/workflows/benchmark.yml</code>), combines them with <code>jq -s 'add'</code>, and posts to <code>benchmark-action/github-action-benchmark@v1</code> with <code>alert-threshold: 200%</code>. PRs that regress more than 2× get a comment and a job failure; main-branch results auto-push to <code>gh-pages</code> for historical tracking.</p><p>Local equivalent:</p><div class="code" data-label="bash"><pre><code>make bench-json   # writes bench_results.json</code></pre></div><hr></section><section id="performance-numbers-reference"><h2><span class="num">09</span>Performance numbers (reference)</h2><p>Measured on Apple Silicon dev hardware, OCaml 5.1.0, release profile:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody><tr><td>Event bus end-to-end (heartbeat) — avg</td><td>~2.1 ms</td></tr><tr><td>Event bus end-to-end — p99</td><td>~3.4 ms</td></tr><tr><td>Event bus throughput</td><td>~1.82M events/sec</td></tr><tr><td><code>RingBuffer.push</code>/<code>pop</code> — avg</td><td>34 ns / 39 ns</td></tr><tr><td><code>Clock.now_monotonic_ns</code> — avg</td><td>74 ns</td></tr></tbody></table></div></div><p>GitHub Actions runners are noisier (±20–40%). Treat CI numbers as regression detectors, not absolute targets.</p><hr></section><section id="known-limitations"><h2><span class="num">10</span>Known limitations</h2><ul><li><strong>Synchronous handlers</strong>: per-subscription async SPSC queues are a documented follow-up. Today, all handlers for a given event run serially in the dispatcher domain. Keep handlers under ~100 µs.</li><li><strong>Strict-priority starvation</strong>: <code>Low</code> band events can be starved indefinitely under sustained <code>Critical</code> traffic. A round-robin token scheme is planned.</li><li><strong>Domain payloads</strong>: <code>Trade.t</code> / <code>Order.t</code> / <code>Tick.t</code> are <em>not</em> used directly in <code>Event.payload</code> — that would force <code>ppx_jane</code> into the domain layer. The payload variant uses self-contained record types with the same fields. Mirror-conversion helpers may be added in a later PR if needed.</li><li><strong>mmap is a portable-mode stub</strong>: <code>Event_log</code> uses plain stdlib <code>Unix.write</code>/<code>Unix.read</code> rather than mmap, because <code>lib/common/utils/portable_stubs.c</code> does not implement the actual <code>mmap</code> syscall on portable mode. Real mmap support can be added later without changing the on-disk format.</li></ul><hr></section><section id="where-to-look-in-the-source"><h2><span class="num">11</span>Where to look in the source</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Thing</th><th>File</th></tr></thead><tbody><tr><td>Event types</td><td><code>lib/infrastructure/event_bus/event_types.ml</code></td></tr><tr><td>Priority queue</td><td><code>lib/infrastructure/event_bus/priority_queue.ml</code></td></tr><tr><td>Filters / subscriptions</td><td><code>lib/infrastructure/event_bus/subscription.ml</code></td></tr><tr><td>Bus facade + dispatcher</td><td><code>lib/infrastructure/event_bus/event_bus.ml</code></td></tr><tr><td>Latency hookpoints</td><td><code>lib/infrastructure/event_bus/instrumentation.ml</code></td></tr><tr><td>Append-only log + replay</td><td><code>lib/infrastructure/event_bus/event_log.ml</code></td></tr><tr><td>Memory profiling</td><td><code>lib/infrastructure/event_bus/memory_monitor.ml</code></td></tr><tr><td>Replay CLI</td><td><code>bin/event_replay.ml</code></td></tr><tr><td>Latency benchmark</td><td><code>test/performance/event_bus_latency.ml</code></td></tr><tr><td>Throughput benchmark</td><td><code>test/performance/event_bus_throughput.ml</code></td></tr><tr><td>Tests</td><td><code>test/infrastructure/event_bus/</code></td></tr></tbody></table></div></div></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="domain-models.html"><span class="dir">← previous</span><span>Domain Models</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="data-ingestion.html"><span class="dir">next →</span><span>Data Ingestion</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">event_bus</span>
+│ publish     ✓  4-band priority queue
+│ replay      ✓  bin_prot event log
+│ instrument  ✓  latency + memtrace
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        foundations · 11 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

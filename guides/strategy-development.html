@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Writing a Strategy — AlgoStream</title>
+  <meta name="description" content="Writing a strategy, testing it against history, and running it live — using the same code for both.">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Writing a Strategy — AlgoStream">
+  <meta property="og:description" content="Writing a strategy, testing it against history, and running it live — using the same code for both.">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">strategy development</span>
+      </div>
+      <div class="group">
+        <span>foundations</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span>tutorial</span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Foundations</p>
+        <h1>strategy <span class="accent">development</span></h1>
+        <p class="lede">Writing a strategy, testing it against history, and running it live — using the same code for both.</p>
+        <div class="guide-meta"><span><span class="k">interface</span>Strategy.S</span><span><span class="k">contract</span>same code backtest and live</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/strategy_development.md" rel="noopener">strategy_development.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#the-interface">The interface</a></li><li><a href="#a-worked-example">A worked example</a></li><li><a href="#testing-it">Testing it</a></li><li><a href="#running-it-live">Running it live</a></li><li><a href="#registering-a-strategy">Registering a strategy</a></li><li><a href="#common-mistakes">Common mistakes</a></li></ol>
+        </nav>
+        <article class="prose">
+          <section class="intro"><p>That last part is the whole design. <code>lib/strategy/</code> depends on neither <code>backtest</code> nor <code>event_bus</code>; its <code>dune</code> says so explicitly. A strategy is a pure decision function, and the two drivers — <code>Backtest.Engine</code> offline and <code>Runtime.Instance</code> live — feed it the same <code>Event.t</code> and interpret the same <code>Action.t list</code>. <code>test/runtime/test_parity.ml</code> asserts they produce identical fills, counters and NAV from one fixture, which is what makes a backtest worth anything here.</p><p>Paper trading throughout. There is no venue connectivity in this project.</p></section>
+          <section id="the-interface"><h2><span class="num">01</span>The interface</h2><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">module type S = sig
+  type params
+  type state
+
+  val name : string
+  val default_params : params
+  val init : params -&gt; state
+  val on_event : state -&gt; Context.t -&gt; Event.t -&gt; state * Action.t list
+end</code></pre></div><p>Two things about <code>on_event</code> are worth dwelling on.</p><p><strong>It returns actions rather than submitting them.</strong> Nothing in a strategy places an order. It returns intent, and risk gating, position sizing and routing happen outside — which is why the same strategy can run against a simulator and a live feed without knowing which it is in.</p><p><strong>It is a pure function of <code>(state, context, event)</code>.</strong> No clock reads, no RNG, no I/O. CI enforces the first two: a lint bans <code>Time_utils.Clock</code> and <code>Random.self_init</code> under <code>lib/strategy/</code>. This is not stylistic. A strategy that reads the wall clock produces different decisions on replay than it did live, and every backtest you run afterwards is measuring the clock.</p><p><code>Context.t</code> exposes market and portfolio state as accessor closures, so a live driver can back it with processor snapshots without copying.</p></section><section id="a-worked-example"><h2><span class="num">02</span>A worked example</h2><p>A minimum viable strategy: go long when price drops more than <code>threshold</code> below a rolling mean, flatten when it recovers.</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type params = { symbol : string; window : int; threshold : float }
+type state  = { prices : float list; position : float }
+
+let name = "mean_reversion_demo"
+let default_params = { symbol = "BTCUSDT"; window = 20; threshold = 0.02 }
+let init _ = { prices = []; position = 0.0 }
+
+let on_event state ctx event =
+  match event with
+  | Event.Tick t when String.equal t.symbol default_params.symbol -&gt;
+    let prices = t.price :: (if List.length state.prices &gt;= default_params.window
+                             then List.filteri (fun i _ -&gt; i &lt; default_params.window - 1) state.prices
+                             else state.prices) in
+    let state = { state with prices } in
+      if List.length prices &lt; default_params.window then (state, [])
+      else
+        let mean = List.fold_left ( +. ) 0.0 prices /. float_of_int (List.length prices) in
+        let deviation = (t.price -. mean) /. mean in
+          if deviation &lt; -.default_params.threshold &amp;&amp; state.position &lt;= 0.0 then
+            ({ state with position = 1.0 },
+             [ Action.Submit { symbol = t.symbol; side = Buy; quantity = 1.0 } ])
+          else if deviation &gt; 0.0 &amp;&amp; state.position &gt; 0.0 then
+            ({ state with position = 0.0 },
+             [ Action.Submit { symbol = t.symbol; side = Sell; quantity = 1.0 } ])
+          else (state, [])
+  | _ -&gt; (state, [])</code></pre></div><p>Three habits worth forming, all visible above:</p><ul><li><strong>Ignore what you do not handle.</strong> <code>| _ -&gt; (state, [])</code>. A strategy sees fills, order updates, bars and pair snapshots as well as ticks.</li><li><strong>Filter by symbol.</strong> A live runtime subscribes to everything the instance's config lists.</li><li><strong>Keep state bounded.</strong> The window truncation matters: a live strategy runs for weeks, and an unbounded accumulator is a slow leak that a short backtest will never show you.</li></ul></section><section id="testing-it"><h2><span class="num">03</span>Testing it</h2><p>Start offline. <code>Backtest.Engine</code> needs a data source and a cost model:</p><div class="code" data-label="bash"><pre><code>make fixture OUT=/tmp/fixture.log BARS=5000
+dune exec bin/backtest.exe -- --log-file /tmp/fixture.log --strategy mean_reversion_demo</code></pre></div><p>Then the check that actually matters:</p><div class="code" data-label="bash"><pre><code>dune exec test/runtime/test_parity.exe</code></pre></div><p>Same strategy, same events, driven both ways. If they diverge, the cause is almost always impurity — a clock read, a hash-order dependency, or state carried between instances.</p></section><section id="running-it-live"><h2><span class="num">04</span>Running it live</h2><div class="code" data-label="bash"><pre><code>dune exec bin/algostream.exe -- \
+  --symbols BTCUSDT,ETHUSDT \
+  --strategy pairs --y BTCUSDT --x ETHUSDT \
+  --capital 100000 \
+  --static site/</code></pre></div><p>Then <code>http://127.0.0.1:8080/dashboard/</code>.</p><p>Every fill is simulated against live quotes by <code>Runtime.Paper_broker</code>, reusing the backtest cost model and slippage. There is no venue connectivity anywhere in this project — no credentials, no request signing, no trading endpoint — so a strategy cannot place a real order however it is configured.</p></section><section id="registering-a-strategy"><h2><span class="num">05</span>Registering a strategy</h2><ol><li>Add the module under <code>lib/strategy/</code>.</li><li>Add it to <code>lib/strategy/dune</code>'s <code>modules</code> field.</li><li>Wire it into the daemon's strategy selection in <code>bin/algostream.ml</code>.</li><li>Give it a test under <code>test/strategy/</code>.</li></ol></section><section id="common-mistakes"><h2><span class="num">06</span>Common mistakes</h2><p><strong>Reading the clock.</strong> CI will reject it. Use the event's own <code>timestamp_ns</code> — which is also the only thing that behaves the same on replay.</p><p><strong>Assuming ordering across symbols.</strong> Ticks for different symbols interleave arbitrarily. Anything that needs alignment should use <code>Time_series.Processor</code> bars or a <code>Pair_snapshot</code>.</p><p><strong>Unbounded state.</strong> See above.</p><p><strong>Treating a <code>Submit</code> as a fill.</strong> It is intent. Risk limits may reject it, sizing may change the quantity, and the fill arrives later as its own event. Update position on the fill, not on the submission.</p><p><strong>Believing a backtest Sharpe.</strong> The project's Sharpe and drawdown targets are recorded as <strong>unvalidated</strong> for exactly this reason: a number produced by a strategy that has never traded measures the backtest, not the strategy.</p></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="getting-started.html"><span class="dir">← previous</span><span>Getting Started</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="domain-models.html"><span class="dir">next →</span><span>Domain Models</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">strategy_development</span>
+│ on_event is pure — CI bans the clock and the RNG under lib/strategy/
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        foundations · 6 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

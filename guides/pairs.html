@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Pairs Trading — AlgoStream</title>
+  <meta name="description" content="lib/pairs is the layer that takes tick streams + closed bars from upstream layers (event bus + lib/time_series) and produces, for each tracked pair of symbols, an immutable Snapsho">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Pairs Trading — AlgoStream">
+  <meta property="og:description" content="lib/pairs is the layer that takes tick streams + closed bars from upstream layers (event bus + lib/time_series) and produces, for each tracked pair of symbols, an immutable Snapsho">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">pairs trading</span>
+      </div>
+      <div class="group">
+        <span>strategy</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Strategy</p>
+        <h1>pairs <span class="accent">trading</span></h1>
+        <p class="lede"><code>lib/pairs</code> is the layer that takes tick streams + closed bars from upstream layers (event bus + <code>lib/time_series</code>) and produces, for each tracked pair of symbols, an immutable <code>Snapshot.t</code> carrying β, spread, z-score, rolling correlation, ADF p-value, half-life, cointegration verdict, and a mean-reversion signal. Downstream strategy code reads these snapshots via <code>Atomic.get</code> — same publication contract as <code>lib/analytics</code>.</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/pairs/</span><span><span class="k">covers</span>cointegration · hedge ratio · spread</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/pairs.md" rel="noopener">pairs.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#concurrency-model">Concurrency model</a></li><li><a href="#what-the-layer-produces">What the layer produces</a></li><li><a href="#numerical-correctness">Numerical correctness</a></li><li><a href="#bar-boundary-cross-leg-alignment">Bar boundary + cross-leg alignment</a></li><li><a href="#event-time-determinism">Event-time determinism</a></li><li><a href="#selection-workflow">Selection workflow</a></li><li><a href="#estimator-choices">β estimator choices</a></li><li><a href="#tests-benchmarks">Tests + benchmarks</a></li></ol>
+        </nav>
+        <article class="prose">
+          <section class="intro"><p>This sits between market-data processing (ingestion, statistics, time series, normalization) and execution (signal generation, position sizing, order routing).</p></section>
+          <section id="concurrency-model"><h2><span class="num">01</span>Concurrency model</h2><!-- Replaces the `flowchart LR` at docs/guides/pairs.md:14.
+     Same processor topology as time-series-1.html and analytics-1.html. -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Processor topology</span>
+    <span>3 domains</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 900 262" role="img"
+         aria-label="The bus dispatcher domain feeds a shim subscriber into the pairs domain's drain loop, which maintains per-pair state, published to strategy domains by an atomic set.">
+      <defs>
+        <marker id="ah-pr1" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <rect class="d-group" x="8" y="44" width="200" height="200" rx="2"/>
+      <text class="d-glabel" x="20" y="36">Bus Dispatcher Domain</text>
+      <rect class="d-node" x="24" y="112" width="168" height="48" rx="2"/>
+      <text class="d-title" x="40" y="141">Dispatcher loop</text>
+
+      <rect class="d-group" x="328" y="44" width="270" height="200" rx="2"/>
+      <text class="d-glabel" x="340" y="36">Pairs Domain</text>
+      <rect class="d-node" x="344" y="66" width="238" height="42" rx="2"/>
+      <text class="d-title" x="360" y="92">Drain loop</text>
+      <rect class="d-node-a" x="344" y="132" width="238" height="94" rx="2"/>
+      <text class="d-sub"   x="360" y="156">Per-pair state</text>
+      <text class="d-title" x="360" y="174">hedge · spread · corr</text>
+      <text class="d-title" x="360" y="191">classifier · bar buffers</text>
+      <text class="d-title" x="360" y="208">cached ADF / EG / half-life</text>
+      <path class="d-edge" marker-end="url(#ah-pr1)" d="M463,108 L463,126"/>
+
+      <rect class="d-group" x="698" y="44" width="194" height="200" rx="2"/>
+      <text class="d-glabel" x="710" y="36">Strategy Domains</text>
+      <rect class="d-node" x="714" y="112" width="162" height="48" rx="2"/>
+      <text class="d-title" x="730" y="135">Processor.snapshot</text>
+      <text class="d-sub"   x="730" y="151">~pair</text>
+
+      <text class="d-elabel" x="268" y="12" text-anchor="middle">shim subscriber</text>
+      <text class="d-elabel" x="268" y="24" text-anchor="middle">typed parse · symbol-mem · SPSC</text>
+      <path class="d-edge" marker-end="url(#ah-pr1)" d="M192,136 C 250,136 260,88 338,88"/>
+
+      <text class="d-elabel" x="648" y="252" text-anchor="middle">Atomic.set Snapshot.t</text>
+      <path class="d-edge" marker-end="url(#ah-pr1)" d="M582,180 C 640,180 650,136 708,136"/>
+    </svg>
+  </div>
+</div><ul><li><strong>Single Pairs Domain</strong> owns every <code>Per_pair.t</code> and is the sole writer.</li><li>The bus shim subscriber is O(1): typed parse via <code>Tick_event.of_event_payload</code>, hashtable membership against the symbols-of-interest set, then <code>SPSCQueue.enqueue</code>. Drops on full queue with a counter.</li><li>Cross-Domain reads from strategies use <code>Processor.snapshot ~pair</code>, which <code>Atomic.get</code>s a fresh immutable <code>Snapshot.t</code>. No torn reads — <code>Snapshot.t</code> is allocated fresh on every publish.</li><li>Bars are admin-fed via <code>Processor.feed_bar : t → Bar.t → unit</code>. Bars are not yet on the event bus; a follow-up PR will add a bar-publisher bridge. The Domain caches the most recent bar per symbol and only fires <code>Per_pair.on_bar</code> when both legs report a bar with the same <code>open_ts</code>.</li></ul></section><section id="what-the-layer-produces"><h2><span class="num">02</span>What the layer produces</h2><p>For every active pair, the layer maintains:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Snapshot field</th><th>Source</th><th>Notes</th></tr></thead><tbody><tr><td><code>beta</code> / <code>intercept</code></td><td><code>Hedge_ratio</code></td><td>rolling-OLS <code>cov(x,y)/var(x)</code> by default; Static and Kalman-smoothed modes via <code>Config.beta_mode</code></td></tr><tr><td><code>beta_stdev</code></td><td><code>Rolling_var</code> over β history</td><td>stability metric used by <code>Selection</code></td></tr><tr><td><code>spread</code> / <code>spread_mean</code> / <code>spread_std</code> / <code>z_score</code></td><td><code>Spread</code></td><td><code>s = y − β·x − α</code>; rolling mean/var with periodic recompute</td></tr><tr><td><code>corr</code></td><td><code>Correlation</code> (over <code>Rolling_corr</code>)</td><td>rolling Pearson on price levels</td></tr><tr><td><code>adf_t_stat</code> / <code>adf_p_value</code> / <code>cointegrated</code></td><td><code>Cointegration.Engle_granger</code></td><td>bar-cadence retest every <code>coint_retest_bars</code> closed bars once <code>coint_min_bars</code> samples are buffered</td></tr><tr><td><code>half_life_bars</code></td><td><code>Mean_reversion.half_life</code></td><td>AR(1) fit on the EG residuals; NaN if non-reverting</td></tr><tr><td><code>signal</code></td><td><code>Mean_reversion</code> classifier</td><td><code>Long_spread | Short_spread | Exit | Hold</code> over the z-score with entry / exit / stop-out bands</td></tr><tr><td><code>avg_volume</code></td><td><code>Rolling_mean</code> over <code>min(y_bar.volume, x_bar.volume)</code></td><td>liquidity proxy for <code>Selection</code></td></tr><tr><td><code>ready</code></td><td>composite</td><td>β estimator ready AND spread has ≥ 4 samples</td></tr></tbody></table></div></div><p>Strategies poll on tick:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let snap = Algostream_pairs.Processor.snapshot proc ~pair:pid in
+if snap.ready &amp;&amp; snap.cointegrated then
+  match snap.signal with
+  | Long_spread  -&gt; (* … buy y, sell β·x … *)
+  | Short_spread -&gt; (* … sell y, buy β·x … *)
+  | Exit         -&gt; (* … flatten … *)
+  | Hold         -&gt; ()</code></pre></div></section><section id="numerical-correctness"><h2><span class="num">03</span>Numerical correctness</h2><p>Three load-bearing decisions:</p><ol><li><strong>No new opam dependencies.</strong> ADF needs a small OLS solver, so <code>lib/pairs/ols.ml</code> rolls one by hand: build the <code>p × p</code> Gram matrix <code>G = AᵀA</code> in a single pass, Cholesky factor <code>G = L Lᵀ</code> with a Tikhonov ridge of <code>1e-12·I</code> added to the diagonal (so a singular Gram becomes a clean <code>Error `Singular</code> rather than NaN-producing), forward + back-substitute for <code>β</code>, then per-column back-substitution to recover the diagonal of <code>G⁻¹</code> for standard errors. Designed for <code>p ≤ 5</code> (the ADF and AR(1) half-life fits), where a hand-rolled solver is cheap — a single ADF on 256 bars at <code>lag = 1</code> is ~6 k flops — and avoids a lacaml or owl dependency.</li><li><strong>Engle-Granger residual ADF uses cointegration critical values, not unit-root values.</strong> <code>lib/pairs/mackinnon_cv.ml</code> embeds two MacKinnon (1996) tables: Table 1 (unit-root, three variants) and Table 2 (cointegration, k=2). The Engle-Granger code computes the residual t-stat against Table 2 — using Table 1 here would underestimate p-values and report cointegration where none exists. p-values are coarse piecewise-linear interpolations between the 1%/5%/10% anchors, clamped to <code>[0.001, 0.20]</code>. The <code>.mli</code> is explicit: no claim of &gt;2 significant figures.</li><li><strong>Johansen is an honest stub.</strong> <code>Cointegration.Johansen.test</code> returns <code>Error `Not_supported_in_v1</code>. Implementing it properly requires an N×N generalized eigenvalue decomposition, which is not worth hand-rolling. The public signature is wired so a linear-algebra dependency can fill it in without churning callers. An explicit error beats a silently-partial implementation that strategies might trust.</li></ol></section><section id="bar-boundary-cross-leg-alignment"><h2><span class="num">04</span>Bar boundary + cross-leg alignment</h2><p>Cointegration tests run on bar closes, not ticks — bars give a clean event-time grid and reduce ADF noise. <code>Per_pair.on_bar</code> requires both legs to carry the same <code>open_ts</code>; the processor is responsible for matching arriving bars by <code>open_ts</code> before calling <code>on_bar</code>. Misaligned or out-of-order bars are silently ignored. A <code>last_bar_close_ts</code> dedupe stops the same <code>(open_ts)</code> from triggering two retests if the second bar arrives twice (e.g., from a restart).</p><p>Once both legs are aligned, the bar closes go into per-leg circular buffers (cap = <code>max 64 (coint_min_bars * 4)</code>); when <code>bars_since_retest</code> crosses <code>coint_retest_bars</code> AND both buffers hold ≥ <code>coint_min_bars</code> samples, the retest fires:</p><ol><li>Snapshot both buffers (cheap — <code>Array.blit</code> from circular into linear).</li><li><code>Cointegration.Engle_granger.test</code> → returns `{beta; intercept; residuals; residual_adf;</li></ol><p>cointegrated}`.</p><ol><li><code>Mean_reversion.half_life</code> on the residuals.</li><li>Cache <code>last_adf</code> / <code>last_eg</code> / <code>last_half_life</code> for the next tick to publish.</li></ol><p>The cointegration result surfaces on the next tick's snapshot, not on a dedicated publication path — this keeps the publication contract single-writer-single-channel.</p></section><section id="event-time-determinism"><h2><span class="num">05</span>Event-time determinism</h2><p>All time arithmetic in <code>lib/pairs</code> reads from <code>tick.timestamp_ns</code> / <code>bar.close_ts</code>. CI grep (<code>.github/workflows/ci.yml</code>) bans <code>Clock.now_*</code> and <code>Unix.gettimeofday</code> under <code>lib/pairs/</code>, and <code>test/pairs/test_determinism.ml</code> runs a local in-tree scan + a property test that replays the same stream twice and asserts byte-equal final Snapshot fields. Local <code>make pairs-clock-lint</code> mirrors the CI check.</p><p>The <code>min_publish_interval_ns</code> throttle (default 1 ms event time) lives in <code>Per_pair.on_tick</code>: a snapshot is published only when <code>ts_ns − last_publish_ts_ns ≥ min_publish_interval_ns</code>. With 1 ms event-time spacing this never throttles ticks that are &lt; 1 ms apart but does prevent the snapshot allocation rate from going wild when fixture data spans nanosecond-resolution timestamps.</p></section><section id="selection-workflow"><h2><span class="num">06</span>Selection workflow</h2><!-- Replaces the `stateDiagram-v2` at docs/guides/pairs.md:134.
+     A linear pipeline rather than a branching state machine, so it is
+     drawn rather than tabulated. -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Selection workflow</span>
+    <span>4 stages</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 950 150" role="img"
+         aria-label="Selection workflow: the universe is turned into snapshots by Processor.snapshots, filtered by Selection.candidates with criteria, ranked by weighted score, and yields the top K candidates.">
+      <defs>
+        <marker id="ah-pr2" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <circle cx="20" cy="80" r="7" fill="#4AE25A"/>
+
+      <rect class="d-node-a" x="52" y="56" width="160" height="48" rx="2"/>
+      <text class="d-title" x="68" y="85">Universe</text>
+
+      <rect class="d-node" x="282" y="56" width="160" height="48" rx="2"/>
+      <text class="d-title" x="298" y="85">Snapshots</text>
+
+      <rect class="d-node" x="512" y="56" width="160" height="48" rx="2"/>
+      <text class="d-title" x="528" y="85">Filtered</text>
+
+      <rect class="d-node" x="742" y="56" width="160" height="48" rx="2"/>
+      <text class="d-title" x="758" y="85">Ranked</text>
+
+      <circle cx="932" cy="80" r="7" fill="none" stroke="#4AE25A" stroke-width="2"/>
+
+      <path class="d-edge" marker-end="url(#ah-pr2)" d="M29,80 L46,80"/>
+      <path class="d-edge" marker-end="url(#ah-pr2)" d="M212,80 L276,80"/>
+      <path class="d-edge" marker-end="url(#ah-pr2)" d="M442,80 L506,80"/>
+      <path class="d-edge" marker-end="url(#ah-pr2)" d="M672,80 L736,80"/>
+      <path class="d-edge" marker-end="url(#ah-pr2)" d="M902,80 L921,80"/>
+
+      <text class="d-elabel" x="244" y="42" text-anchor="middle">Processor.snapshots t</text>
+      <text class="d-elabel" x="474" y="42" text-anchor="middle">Selection.candidates ~criteria</text>
+      <text class="d-elabel" x="704" y="42" text-anchor="middle">weighted score</text>
+      <text class="d-elabel" x="880" y="128" text-anchor="middle">top-K candidates</text>
+    </svg>
+  </div>
+</div><ul><li><code>Selection.enumerate_pairs (All_pairs_of syms)</code> produces <code>N(N-1)/2</code> lex-ordered <code>Pair_id.t</code>s.</li><li><code>Selection.candidates snapshots criteria</code> filters on <code>min_n</code> (samples), <code>min_corr</code>, <code>max_adf_pvalue</code>, <code>min_half_life_bars</code> / <code>max_half_life_bars</code>, <code>max_beta_stdev</code>, <code>min_avg_volume</code>. Drops NaN half-lives.</li><li>Default rank: <code>0.4·(1 − p_value) + 0.4·|corr| + 0.2/(1 + half_life)</code>. Sensible heuristic; strategies override by computing their own ranker.</li></ul></section><section id="estimator-choices"><h2><span class="num">07</span>β estimator choices</h2><p><code>Config.beta_mode</code>:</p><ul><li><strong><code>Static of float</code></strong> — fixed β. Best when you have a strong prior (e.g., delta-1 hedge on ETF vs. underlying basket).</li><li><strong><code>Rolling_ols</code></strong> <em>(default)</em> — <code>cov(x, y) / var(x)</code> over <code>Config.beta_window</code>, periodic full recompute every <code>recompute_every</code> ticks. Same <code>Rolling_var</code> recompute trick that <code>lib/analytics</code> uses to bound long-running float drift. When <code>Rolling_var(x) &lt; 1e-12</code> (flat regressor — calm regime), β holds at its previous value and <code>beta_frozen_ticks</code> increments; surface this counter when regime transitions matter.</li><li><strong><code>Kalman_smoothed</code></strong> — passes the rolling-OLS β through <code>Filters.Kalman1d</code>, treating rolling β as a noisy measurement of true β. Use when rolling β is too jumpy at your window.</li></ul></section><section id="tests-benchmarks"><h2><span class="num">08</span>Tests + benchmarks</h2><div class="code" data-label="bash"><pre><code># All 40 tests in 12 suites
+dune runtest test/pairs
+
+# Lint
+make pairs-clock-lint
+
+# Bench (Apple Silicon: ~800k ev/s direct, ~700k ev/s through bus on single pair)
+make pairs-bench</code></pre></div><p>The bench (<code>test/performance/pairs_throughput.exe</code>) is registered in <code>.github/workflows/ benchmark.yml</code> and posts to the gh-pages dashboard. Regression floor: 20 000 ev/s direct.</p></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="analytics.html"><span class="dir">← previous</span><span>Statistical Processing</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="advanced-models.html"><span class="dir">next →</span><span>Advanced Models</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ pairs.md
+│ 8 sections · 1 tables · 2 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        strategy · 8 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

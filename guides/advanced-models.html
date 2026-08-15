@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Advanced Models — AlgoStream</title>
+  <meta name="description" content="lib/advanced_models is the math/statistics toolkit consumed by strategies and the existing lib/pairs/ layer. Five user-facing capabilities, two supporting building blocks (special ">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Advanced Models — AlgoStream">
+  <meta property="og:description" content="lib/advanced_models is the math/statistics toolkit consumed by strategies and the existing lib/pairs/ layer. Five user-facing capabilities, two supporting building blocks (special ">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">advanced models</span>
+      </div>
+      <div class="group">
+        <span>strategy</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Strategy</p>
+        <h1>advanced <span class="accent">models</span></h1>
+        <p class="lede"><code>lib/advanced_models</code> is the math/statistics toolkit consumed by strategies and the existing <code>lib/pairs/</code> layer. Five user-facing capabilities, two supporting building blocks (special functions + a small derivative-free optimizer + a symmetric eigendecomposition):</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/advanced_models/</span><span><span class="k">covers</span>Kalman · GARCH · OU · PCA</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/advanced_models.md" rel="noopener">advanced_models.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#no-new-deps-stance">No-new-deps stance</a></li><li><a href="#kalman-hedge-bivariate-hedge-ratio">Kalman_hedge — bivariate hedge ratio</a></li><li><a href="#garch11-variance-targeting-volatility-forecasting">Garch11 — variance-targeting volatility forecasting</a></li><li><a href="#ornstein-uhlenbeck-continuous-time-mean-reversion">Ornstein_uhlenbeck — continuous-time mean reversion</a></li><li><a href="#pca-factor-analysis">Pca — factor analysis</a></li><li><a href="#hypothesis-test-seven-tests-one-result-type">Hypothesis_test — seven tests, one result type</a></li><li><a href="#tests-benchmarks">Tests + benchmarks</a></li></ol>
+        </nav>
+        <article class="prose">
+          <section class="intro"><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Capability</th><th>Module</th><th>Built on</th></tr></thead><tbody><tr><td>Kalman filter for hedge ratio</td><td><code>Kalman_hedge</code></td><td>(closed-form 2×2 algebra)</td></tr><tr><td>GARCH(1,1) volatility</td><td><code>Garch11</code></td><td><code>Nelder_mead</code></td></tr><tr><td>Ornstein-Uhlenbeck process</td><td><code>Ornstein_uhlenbeck</code></td><td><code>Pairs.Ols.regress2</code>, <code>Math_utils.FastRandom.normal_sample</code></td></tr><tr><td>Principal Component Analysis</td><td><code>Pca</code></td><td><code>Eig</code></td></tr><tr><td>Hypothesis-test framework</td><td><code>Hypothesis_test</code></td><td><code>Distribution</code> → <code>Special</code></td></tr></tbody></table></div></div><p>Pure-math utility code — no Domains, no SPSC, no <code>Atomic.set</code>. Strategies and the existing <code>lib/pairs/</code> processor call these functions directly and integrate their output into the established publication contracts.</p></section>
+          <section id="no-new-deps-stance"><h2><span class="num">01</span>No-new-deps stance</h2><p>We don't pull in <code>owl</code>, <code>lacaml</code>, or any other math library. The hand-rolled stack:</p><ul><li><code>Special</code> — <code>erf</code> / <code>erfc</code> (Abramowitz &amp; Stegun 7.1.26), <code>normal_cdf</code> / <code>normal_pdf</code>, <code>normal_quantile</code> (Beasley-Springer-Moro), <code>log_gamma</code> (Lanczos g=7 with reflection), <code>incomplete_gamma_p</code> / <code>incomplete_gamma_q</code> (Press <em>Numerical Recipes</em> §6.2), and <code>regularized_beta</code> (Press §6.4 continued fraction). Sufficient for ≤ 2-sig-fig p-values.</li><li><code>Nelder_mead</code> — derivative-free simplex optimizer for small fixed dimensions (≤ 4).</li><li><code>Eig.jacobi_sym</code> — symmetric eigendecomposition via pairwise Givens rotations.</li></ul><p>These are the load-bearing primitives; everything else composes from them. The trade-off: research-grade precision is <em>not</em> claimed (consistent with the existing <code>Pairs.Mackinnon_cv</code> caveat). For higher precision, swap in a dedicated stats library.</p></section><section id="kalman-hedge-bivariate-hedge-ratio"><h2><span class="num">02</span>Kalman_hedge — bivariate hedge ratio</h2><p>The existing <code>Pairs.Hedge_ratio.Kalman_smoothed</code> mode smooths the rolling-OLS β estimate through <code>Filters.Kalman1d</code> — useful but <strong>post-hoc</strong>: it filters β values that have already been corrupted by the rolling OLS window.</p><p><code>Kalman_hedge</code> runs a proper bivariate state-space filter:</p><ul><li>State <code>x = [α, β]ᵀ</code> (intercept and slope).</li><li>State transition: <code>x_t = x_{t-1} + w_t</code>, <code>w_t ~ N(0, Q)</code>, <code>Q = diag(Q_α, Q_β)</code> (random walk).</li><li>Observation: <code>y_t = [1, x_obs_t] · x_t + v_t</code>, <code>v_t ~ N(0, R)</code>.</li></ul><p>Per-step algebra (all 2×2, closed-form, ~12 flops/step):</p><ul><li>Predict: <code>x⁻ = x</code> (random walk); <code>P⁻ = P + Q</code>.</li><li>Innovation: <code>S = P⁻[0][0] + 2·x·P⁻[0][1] + x²·P⁻[1][1] + R</code>.</li><li>Gain: <code>K = [(P⁻[0][0] + x·P⁻[0][1])/S, (P⁻[0][1] + x·P⁻[1][1])/S]</code>.</li><li>Update: <code>x⁺ = x⁻ + K·(y − H·x⁻)</code>.</li><li>Covariance: <strong>Joseph form</strong> <code>P⁺ = (I − K·H)·P⁻·(I − K·H)ᵀ + K·R·Kᵀ</code> — symmetric and PSD by construction.</li></ul><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let kf = AdvancedModels.Kalman_hedge.create
+           ~initial_alpha:0.0 ~initial_beta:1.0
+           ~initial_cov:10.0
+           ~process_var_alpha:1e-7  (* α drifts very slowly *)
+           ~process_var_beta:1e-3   (* β can move per tick *)
+           ~measurement_var:0.25
+           () in
+let s = AdvancedModels.Kalman_hedge.update kf ~y ~x in
+(* s.alpha, s.beta, s.cov — fresh records on every call *)</code></pre></div><p>Follow-up: a separate PR will wire <code>Kalman_hedge</code> into <code>Pairs.Hedge_ratio.beta_mode</code> as a fourth mode (alongside <code>Static</code> / <code>Rolling_ols</code> / <code>Kalman_smoothed</code>).</p></section><section id="garch11-variance-targeting-volatility-forecasting"><h2><span class="num">03</span>Garch11 — variance-targeting volatility forecasting</h2><p>Model: <code>σ²_t = ω + α·r²_{t-1} + β·σ²_{t-1}</code>. Long-run variance <code>σ̄² = ω/(1 − α − β)</code>.</p><p>Two design choices:</p><ol><li><strong>Variance targeting</strong>: fix <code>ω = σ̄²·(1 − α − β)</code> with <code>σ̄²</code> from the sample. The fit reduces to two parameters <code>(α, β)</code> on the stationarity simplex <code>α ≥ 0, β ≥ 0, α + β &lt; 1</code>.</li><li><strong>Softmax reparameterization</strong>: optimize over unconstrained <code>(p₁, p₂)</code> with <code>α = sigmoid(p₁)·0.999</code>, <code>β = sigmoid(p₂)·(0.999 − α)</code>. The simplex is always satisfied.</li></ol><p>Quasi-MLE under Gaussian innovations: <code>NLL = ½ Σ (log σ²_t + r²_t/σ²_t)</code>; optimized by <code>Nelder_mead</code> from four starting points to dodge local minima. The best NLL wins.</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">match AdvancedModels.Garch11.fit ~returns () with
+| Ok r -&gt;
+  Printf.printf "ω=%g α=%g β=%g (LL=%g, converged=%b)\n"
+    r.params.omega r.params.alpha r.params.beta r.log_likelihood r.converged;
+  let online =
+    AdvancedModels.Garch11.of_fit r
+      ~last_return:returns.(Array.length returns - 1)
+      ~last_variance:r.long_run_variance in
+  let next_sigma2 = AdvancedModels.Garch11.update online ~r:new_return in
+  let multi_step = AdvancedModels.Garch11.forecast online ~horizon:20 in
+  (* multi_step.(0) = σ²_{t+1}, ..., multi_step.(19) = σ²_{t+20}
+     all decay toward long_run_variance at rate (α + β) per step *)
+  ...
+| Error `Insufficient_data (have, need) -&gt; ...
+| Error `Not_converged -&gt; ...</code></pre></div><p>Tests confirm persistence <code>α + β</code> is recovered within ±0.1 on 3000 samples of known-DGP GARCH; individual α / β can fluctuate more on finite samples (well-known).</p></section><section id="ornstein-uhlenbeck-continuous-time-mean-reversion"><h2><span class="num">04</span>Ornstein_uhlenbeck — continuous-time mean reversion</h2><p>SDE: <code>dr_t = θ(μ − r_t) dt + σ dW_t</code>. The discrete-time transition at fixed <code>Δt</code> is exact Gaussian:</p><ul><li>mean: <code>μ + (r_t − μ)·exp(−θ·Δt)</code></li><li>variance: <code>σ²·(1 − exp(−2θ·Δt))/(2θ)</code></li></ul><p>Calibration uses <code>Pairs.Ols.regress2</code> to fit <code>r_t = a + b·r_{t-1} + ε</code> and back out:</p><ul><li><code>b = exp(−θ·Δt)</code> → <code>θ = −ln(b)/Δt</code></li><li><code>a = μ·(1 − b)</code> → <code>μ = a/(1 − b)</code></li><li><code>σ² = Var(ε)·2θ/(1 − exp(−2θ·Δt))</code></li></ul><p>Refuses to claim mean-reversion (<code>Error `Non_reverting</code>) if <code>b ∉ (0, 1)</code>. Half-life returned is the continuous-time <code>ln 2 / θ</code>.</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">match AdvancedModels.Ornstein_uhlenbeck.fit ~series ~dt:1.0 with
+| Ok r -&gt;
+  Printf.printf "θ=%g μ=%g σ=%g half_life=%g\n"
+    r.params.theta r.params.mu r.params.sigma r.half_life;
+  let next = AdvancedModels.Ornstein_uhlenbeck.expected_value r.params
+               ~r0:current_value ~t:1.0 in
+  ...
+| Error `Non_reverting -&gt; ...
+
+(* Simulate trajectories for backtesting / Monte Carlo *)
+let path =
+  AdvancedModels.Ornstein_uhlenbeck.simulate r.params
+    ~n:1000 ~dt:0.1 ~seed:42 ~r0:0.0</code></pre></div><p>Conceptually overlaps with <code>Pairs.Mean_reversion.half_life</code> — that one returns the discrete-time AR(1) half-life on residuals; <code>Ornstein_uhlenbeck</code> adds full parameter recovery and the continuous-time framing.</p></section><section id="pca-factor-analysis"><h2><span class="num">05</span>Pca — factor analysis</h2><!-- Replaces the `flowchart LR` at docs/guides/advanced_models.md:145.
+     The PCA pipeline, wrapped across three rows so the seven stages stay
+     legible instead of running off the page. -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Pca.fit pipeline</span>
+    <span>7 stages</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 880 300" role="img"
+         aria-label="PCA pipeline: data is centred by column mean, a sample covariance is taken, eigen-decomposed with Eig.jacobi_sym, sorted by descending eigenvalue, producing components and explained variance, which then support transform and inverse_transform.">
+      <defs>
+        <marker id="ah-am1" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <!-- row 1 -->
+      <rect class="d-node" x="20" y="24" width="230" height="52" rx="2"/>
+      <text class="d-sub"   x="36" y="46">input</text>
+      <text class="d-title" x="36" y="65">data (n × p)</text>
+
+      <rect class="d-node" x="315" y="24" width="230" height="52" rx="2"/>
+      <text class="d-title" x="331" y="47">centre columns</text>
+      <text class="d-title" x="331" y="64">by mean</text>
+
+      <rect class="d-node" x="610" y="24" width="230" height="52" rx="2"/>
+      <text class="d-title" x="626" y="55">sample covariance</text>
+
+      <path class="d-edge" marker-end="url(#ah-am1)" d="M250,50 L309,50"/>
+      <path class="d-edge" marker-end="url(#ah-am1)" d="M545,50 L604,50"/>
+
+      <!-- wrap right-to-left -->
+      <path class="d-edge" marker-end="url(#ah-am1)" d="M725,76 L725,92 L135,92 L135,112"/>
+
+      <!-- row 2 -->
+      <rect class="d-node-a" x="20" y="118" width="230" height="52" rx="2"/>
+      <text class="d-title" x="36" y="149">Eig.jacobi_sym</text>
+
+      <rect class="d-node" x="315" y="118" width="230" height="52" rx="2"/>
+      <text class="d-title" x="331" y="141">sort eigenvalues</text>
+      <text class="d-title" x="331" y="158">descending</text>
+
+      <rect class="d-node-a" x="610" y="118" width="230" height="52" rx="2"/>
+      <text class="d-title" x="626" y="141">components</text>
+      <text class="d-title" x="626" y="158">explained_variance</text>
+
+      <path class="d-edge" marker-end="url(#ah-am1)" d="M250,144 L309,144"/>
+      <path class="d-edge" marker-end="url(#ah-am1)" d="M545,144 L604,144"/>
+
+      <!-- row 3 -->
+      <rect class="d-node" x="315" y="222" width="230" height="52" rx="2"/>
+      <text class="d-title" x="331" y="245">transform</text>
+      <text class="d-sub"   x="331" y="262">project new data</text>
+
+      <rect class="d-node" x="610" y="222" width="230" height="52" rx="2"/>
+      <text class="d-title" x="626" y="245">inverse_transform</text>
+      <text class="d-sub"   x="626" y="262">reconstruct</text>
+
+      <path class="d-edge" marker-end="url(#ah-am1)" d="M700,170 L700,196 L430,196 L430,216"/>
+      <path class="d-edge" marker-end="url(#ah-am1)" d="M725,170 L725,216"/>
+    </svg>
+  </div>
+</div><p><code>Pca.fit</code> centres input columns by their mean, computes the unbiased sample covariance matrix, and diagonalizes it via <code>Eig.jacobi_sym</code>. Components are returned in descending order of explained variance. Optional <code>~n_components</code> truncates to the top k.</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let pca = AdvancedModels.Pca.fit ~data ~n_components:5 () in
+let proj = AdvancedModels.Pca.transform pca ~data:new_obs in
+let recon = AdvancedModels.Pca.inverse_transform pca ~projected:proj in
+(* At full rank, recon ≡ new_obs bit-exact. *)
+
+let evr = AdvancedModels.Pca.explained_variance_ratio pca in
+(* evr.(0) + evr.(1) + ... = fraction of variance retained by the top k *)</code></pre></div><p>Use cases: factor analysis over symbol baskets (top components capture market / sector / idiosyncratic risk), dimensionality reduction for downstream regression, and covariance regularization.</p></section><section id="hypothesis-test-seven-tests-one-result-type"><h2><span class="num">06</span>Hypothesis_test — seven tests, one result type</h2><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type result = { name : string; statistic : float; p_value : float; dof : float option }
+val reject : result -&gt; alpha:float -&gt; bool</code></pre></div><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Test</th><th>When to use</th><th>Distribution under H₀</th></tr></thead><tbody><tr><td><code>one_sample_t ~sample ~mu0</code></td><td>Is the sample mean = <code>mu0</code>?</td><td><code>Student_t(df = n − 1)</code></td></tr><tr><td><code>two_sample_t ~a ~b</code></td><td>Are the two sample means equal?</td><td>Welch t (default) / pooled t</td></tr><tr><td><code>chi_squared_gof ~observed ~expected</code></td><td>Goodness of fit to a multinomial</td><td><code>Chi_squared(df = k − 1)</code></td></tr><tr><td><code>ks_one_sample ~sample ~cdf</code></td><td>Is the sample drawn from <code>cdf</code>?</td><td>Kolmogorov</td></tr><tr><td><code>ks_two_sample ~a ~b</code></td><td>Same distribution?</td><td>Kolmogorov (effective n)</td></tr><tr><td><code>jarque_bera ~sample</code></td><td>Is the sample normally distributed?</td><td><code>Chi_squared(df = 2)</code></td></tr><tr><td><code>ljung_box ~residuals ~lags</code></td><td>Are model residuals autocorrelated up to <code>lags</code>?</td><td><code>Chi_squared(df = lags)</code></td></tr><tr><td><code>runs_test ~sample</code></td><td>Are signs around the sample mean random?</td><td><code>Normal</code> (asymptotic)</td></tr></tbody></table></div></div><p>Coarse-precision caveat: p-values are computed via the rational approximations in <code>Special</code> → <code>Distribution</code>. Claim no more than two significant figures. For research-grade precision, use a dedicated stats package and surface their p-values through this same <code>result</code> shape.</p></section><section id="tests-benchmarks"><h2><span class="num">07</span>Tests + benchmarks</h2><div class="code" data-label="bash"><pre><code># All 10 suites
+dune runtest test/advanced_models
+
+# Lint
+make adv-clock-lint
+
+# Bench (Apple Silicon release: Kalman_hedge ~17.7M ev/s, Garch11 ~26.2M ev/s,
+#        PCA 32x500 ~1.3ms)
+make adv-bench</code></pre></div><p>The bench (<code>test/performance/advanced_models_throughput.exe</code>) is registered in <code>.github/workflows/benchmark.yml</code> and posts to the gh-pages dashboard. Regression floors: 500k ev/s for both online paths, 500 ms ceiling on PCA fit.</p></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="pairs.html"><span class="dir">← previous</span><span>Pairs Trading</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="order-management.html"><span class="dir">next →</span><span>Order Management</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ advanced_models.md
+│ 7 sections · 2 tables · 6 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        strategy · 7 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

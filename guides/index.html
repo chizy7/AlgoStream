@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Documentation — AlgoStream</title>
+  <meta name="description" content="Every AlgoStream guide: event bus, ingestion, time series, pairs trading, risk, backtesting, Monte Carlo and performance tuning.">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Documentation — AlgoStream">
+  <meta property="og:description" content="Every AlgoStream guide: event bus, ingestion, time series, pairs trading, risk, backtesting, Monte Carlo and performance tuning.">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">guides</span>
+      </div>
+      <div class="group">
+        <span>24 guides</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span>generated from markdown</span>
+      </div>
+    </header>
+
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Documentation</p>
+        <h1>the <span class="accent">guides</span></h1>
+        <p class="lede">
+          Every layer of AlgoStream, documented where it is built. These pages are generated from
+          <code>docs/guides/*.md</code> — the markdown in the repository is the source of truth, so
+          what you read here and what you read on GitHub cannot drift apart.
+        </p>
+      </div>
+
+      <div class="gindex">
+      <div class="panel gsec">
+        <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+        <div class="panel-head"><span>Foundations</span><span class="seq">4 guides</span></div>
+        <p class="gblurb">Getting a build running, writing a strategy, and the event bus and domain types underneath.</p>
+        <div class="gcards"><a class="gcard" href="./getting-started.html">
+              <span class="gname">Getting Started</span>
+              <span class="gphase"></span>
+              <span class="gbits">9 sections · 1 table · 10 code blocks</span>
+            </a><a class="gcard" href="./strategy-development.html">
+              <span class="gname">Writing a Strategy</span>
+              <span class="gphase">tutorial</span>
+              <span class="gbits">6 sections · 5 code blocks</span>
+            </a><a class="gcard" href="./domain-models.html">
+              <span class="gname">Domain Models</span>
+              <span class="gphase"></span>
+              <span class="gbits">9 sections · 13 code blocks</span>
+            </a><a class="gcard" href="./event-bus.html">
+              <span class="gname">Event Bus</span>
+              <span class="gphase"></span>
+              <span class="gbits">11 sections · 4 tables · 13 code blocks</span>
+            </a></div>
+      </div>      <div class="panel gsec">
+        <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+        <div class="panel-head"><span>Market Data</span><span class="seq">4 guides</span></div>
+        <p class="gblurb">Live feeds in, normalized bars and statistics out.</p>
+        <div class="gcards"><a class="gcard" href="./data-ingestion.html">
+              <span class="gname">Data Ingestion</span>
+              <span class="gphase"></span>
+              <span class="gbits">11 sections · 5 tables · 2 diagrams · 3 code blocks</span>
+            </a><a class="gcard" href="./normalization.html">
+              <span class="gname">Normalization &amp; Quality</span>
+              <span class="gphase"></span>
+              <span class="gbits">7 sections · 1 table · 8 code blocks</span>
+            </a><a class="gcard" href="./time-series.html">
+              <span class="gname">Time Series</span>
+              <span class="gphase"></span>
+              <span class="gbits">8 sections · 3 tables · 1 diagram · 4 code blocks</span>
+            </a><a class="gcard" href="./analytics.html">
+              <span class="gname">Statistical Processing</span>
+              <span class="gphase"></span>
+              <span class="gbits">10 sections · 2 tables · 1 diagram · 2 code blocks</span>
+            </a></div>
+      </div>      <div class="panel gsec">
+        <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+        <div class="panel-head"><span>Strategy</span><span class="seq">4 guides</span></div>
+        <p class="gblurb">Cointegration, models, order routing and risk control.</p>
+        <div class="gcards"><a class="gcard" href="./pairs.html">
+              <span class="gname">Pairs Trading</span>
+              <span class="gphase"></span>
+              <span class="gbits">8 sections · 1 table · 2 diagrams · 2 code blocks</span>
+            </a><a class="gcard" href="./advanced-models.html">
+              <span class="gname">Advanced Models</span>
+              <span class="gphase"></span>
+              <span class="gbits">7 sections · 2 tables · 1 diagram · 6 code blocks</span>
+            </a><a class="gcard" href="./order-management.html">
+              <span class="gname">Order Management</span>
+              <span class="gphase"></span>
+              <span class="gbits">8 sections · 3 tables · 1 diagram · 2 code blocks</span>
+            </a><a class="gcard" href="./risk-management.html">
+              <span class="gname">Risk Management</span>
+              <span class="gphase"></span>
+              <span class="gbits">10 sections · 4 tables · 1 diagram · 8 code blocks</span>
+            </a></div>
+      </div>      <div class="panel gsec">
+        <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+        <div class="panel-head"><span>Research</span><span class="seq">4 guides</span></div>
+        <p class="gblurb">Backtesting, Monte Carlo simulation, performance measurement and parameter search.</p>
+        <div class="gcards"><a class="gcard" href="./backtesting.html">
+              <span class="gname">Backtesting</span>
+              <span class="gphase"></span>
+              <span class="gbits">8 sections · 3 tables · 5 code blocks</span>
+            </a><a class="gcard" href="./monte-carlo.html">
+              <span class="gname">Monte Carlo</span>
+              <span class="gphase"></span>
+              <span class="gbits">11 sections · 3 tables · 5 code blocks</span>
+            </a><a class="gcard" href="./performance-analytics.html">
+              <span class="gname">Performance Analytics</span>
+              <span class="gphase"></span>
+              <span class="gbits">6 sections · 2 tables · 2 code blocks</span>
+            </a><a class="gcard" href="./optimization.html">
+              <span class="gname">Strategy Optimization</span>
+              <span class="gphase"></span>
+              <span class="gbits">10 sections · 2 tables · 2 code blocks</span>
+            </a></div>
+      </div>      <div class="panel gsec">
+        <span class="br-tr" aria-hidden="true"></span><span class="br-bl" aria-hidden="true"></span>
+        <div class="panel-head"><span>Operations</span><span class="seq">8 guides</span></div>
+        <p class="gblurb">Running it, watching it, securing it, and knowing what to do when it breaks.</p>
+        <div class="gcards"><a class="gcard" href="./dashboard.html">
+              <span class="gname">Dashboard</span>
+              <span class="gphase"></span>
+              <span class="gbits">12 sections · 4 tables · 1 code block</span>
+            </a><a class="gcard" href="./telemetry.html">
+              <span class="gname">Telemetry</span>
+              <span class="gphase"></span>
+              <span class="gbits">10 sections · 4 tables · 1 code block</span>
+            </a><a class="gcard" href="./live-runtime.html">
+              <span class="gname">Live Runtime</span>
+              <span class="gphase">paper only</span>
+              <span class="gbits">9 sections · 3 tables · 1 diagram · 1 code block</span>
+            </a><a class="gcard" href="./reporting.html">
+              <span class="gname">Reporting</span>
+              <span class="gphase"></span>
+              <span class="gbits">8 sections · 2 tables · 1 code block</span>
+            </a><a class="gcard" href="./performance-tuning.html">
+              <span class="gname">Performance Tuning</span>
+              <span class="gphase">reference</span>
+              <span class="gbits">9 sections · 1 table · 28 code blocks</span>
+            </a><a class="gcard" href="./security.html">
+              <span class="gname">Security</span>
+              <span class="gphase"></span>
+              <span class="gbits">7 sections · 3 tables · 10 code blocks</span>
+            </a><a class="gcard" href="./deployment.html">
+              <span class="gname">Deployment</span>
+              <span class="gphase">container verified · k8s dry-run only</span>
+              <span class="gbits">5 sections · 2 tables · 8 code blocks</span>
+            </a><a class="gcard" href="./operations.html">
+              <span class="gname">Runbook</span>
+              <span class="gphase"></span>
+              <span class="gbits">9 sections · 2 tables · 14 code blocks</span>
+            </a></div>
+      </div>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ 24 guides <span class="check">✓</span>  generated · no external requests
+└─ source     <span class="check">✓</span>  markdown in-repo</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        <a href="https://github.com/chizy7/AlgoStream/tree/main/docs/guides" rel="noopener">view markdown ↗</a>
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

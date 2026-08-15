@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Normalization &amp; Quality — AlgoStream</title>
+  <meta name="description" content="lib/normalization makes the multi-exchange feeds usable from strategy code: canonical Symbol.t, asset-aware validation, cross-feed basis tracking, per-feed health, lineage paths, a">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Normalization &amp; Quality — AlgoStream">
+  <meta property="og:description" content="lib/normalization makes the multi-exchange feeds usable from strategy code: canonical Symbol.t, asset-aware validation, cross-feed basis tracking, per-feed health, lineage paths, a">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">normalization &amp; quality</span>
+      </div>
+      <div class="group">
+        <span>market data</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Market Data</p>
+        <h1>normalization &amp; <span class="accent">quality</span></h1>
+        <p class="lede"><code>lib/normalization</code> makes the multi-exchange feeds usable from strategy code: canonical <code>Symbol.t</code>, asset-aware validation, cross-feed basis tracking, per-feed health, lineage paths, and a corporate-actions framework. Sits alongside <code>lib/time_series</code> and <code>lib/analytics</code>, all consuming the same bus stream.</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/normalization/</span><span><span class="k">covers</span>canonical symbols · lineage · breaks</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/normalization.md" rel="noopener">normalization.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#canonical-symbols">Canonical symbols</a></li><li><a href="#asset-aware-validation">Asset-aware validation</a></li><li><a href="#cross-feed-basis-metric-not-verdict">Cross-feed basis (metric, not verdict)</a></li><li><a href="#feed-health">Feed health</a></li><li><a href="#data-breaks-corporate-actions">Data breaks (corporate actions)</a></li><li><a href="#lineage">Lineage</a></li><li><a href="#source-map">Source map</a></li></ol>
+        </nav>
+        <article class="prose">
+          
+          <section id="canonical-symbols"><h2><span class="num">01</span>Canonical symbols</h2><p>Different exchanges, different conventions. <code>Symbol.parse</code> resolves them to a common shape:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let s = Symbol.parse ~exchange:"binance" ~raw:"BTCUSDT" |&gt; Option.get in
+(* s = { base = "BTC"; quote = "USDT"; asset_class = Crypto } *)
+Symbol.to_canonical s   (* "BTC/USDT" *)</code></pre></div><p><strong>USDT and USD are intentionally distinct.</strong> Binance "BTCUSDT" against Coinbase "BTC-USD" is a USDT-vs-USD basis, not a Binance-vs-Coinbase inconsistency. The cross-feed basis tracker surfaces the spread as a metric.</p><p>Static tables ship for Binance and Coinbase majors; tests register new mappings via <code>Symbol.register</code>.</p></section><section id="asset-aware-validation"><h2><span class="num">02</span>Asset-aware validation</h2><p>Extends the ingestion-side <code>Data_quality</code> verdicts:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">match Validator.check_tick asset ~price ~size with
+| None -&gt; publish_tick ()
+| Some (Tick_size_violation _) -&gt; drop_with_warning ()
+| Some (Min_trade_size_violation _) -&gt; drop_with_warning ()</code></pre></div><p><code>Asset.tick_size</code> is a <code>float</code>, so binary-representation problems are real (a <code>0.01</code> tick is not exactly representable). The validator uses a half-tick tolerance: <code>|price/tick_size - round(price/tick_size)| &lt; 1e-6</code>.</p></section><section id="cross-feed-basis-metric-not-verdict"><h2><span class="num">03</span>Cross-feed basis (metric, not verdict)</h2><p>For two feeds reporting the <em>same canonical symbol</em>, track <code>basis = (price_a - price_b) / mid</code> over a rolling window. Anomalies surface as <code>|current_z| &gt; k</code>, not as fixed-threshold violations.</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let cf = Cross_feed.create
+           ~canonical:{ base = "BTC"; quote = "USD"; asset_class = Crypto }
+           ~feed_a:"coinbase" ~feed_b:"kraken" () in
+Cross_feed.update cf ~ts_ns ~price_a ~price_b;
+let stats = Cross_feed.stats cf in
+if abs_float stats.current_z &gt; 3.0 then
+  Logs.warn (fun m -&gt; m "anomalous basis on %s: z=%.2f" ...)</code></pre></div><p>This is <strong>not</strong> a <code>Data_quality</code> verdict — it's an analytics signal. Strategies opt in.</p></section><section id="feed-health"><h2><span class="num">04</span>Feed health</h2><p>Per-<code>Event.t.source</code> latency + freshness tracker. Hashtable keyed by source string with configurable cap (default 64) and LRU eviction — bounds DoS via spoofed sources in third-party replay logs.</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let fh = Feed_health.create () in
+Feed_health.observe fh ~source:"binance" ~ts_ns ~latency_ns;
+Feed_health.record_gap fh ~source:"binance";
+match Feed_health.per_source fh ~source:"binance" with
+| Some s -&gt; Printf.printf "ticks=%Ld gaps=%Ld avg_lat=%Ldns\n" s.ticks s.gaps s.avg_latency_ns
+| None -&gt; ()</code></pre></div></section><section id="data-breaks-corporate-actions"><h2><span class="num">05</span>Data breaks (corporate actions)</h2><p>Generalized variant covering crypto + equities:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type t =
+  | Split of { ratio : float }
+  | Dividend of { amount : float; currency : string }
+  | Symbol_change of { from_ : string; to_ : string }
+  | Fork of { parent : string; children : (string * float) list }
+  | Halt of { until_ns : int64 }</code></pre></div><p>Apply returns a verdict matching the action's effect on a single tick:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">match Data_break.apply entries tick with
+| Pass -&gt; publish tick
+| Drop -&gt; ()                              (* halt window *)
+| Rewrite t' -&gt; publish t'                (* split: scale price/volume; symbol_change: rename *)
+| Emit_synthetic ts -&gt; List.iter publish ts (* fork: emit child ticks *)</code></pre></div><p>JSON config per asset:</p><div class="code" data-label="json"><pre><code>[
+  { "effective_at_ns": 1654041600000000000, "kind": "halt", "until_ns": 1654128000000000000, "source": "binance_announcement" },
+  { "effective_at_ns": 1700000000000000000, "kind": "symbol_change", "from": "MIM", "to": "USDT", "source": "manual" }
+]</code></pre></div><p>v1 wires <code>Symbol_change</code> and <code>Halt</code> for crypto. <code>Split</code> / <code>Dividend</code> / <code>Fork</code> are populated for equities + future crypto fork events.</p></section><section id="lineage"><h2><span class="num">06</span>Lineage</h2><p>A lightweight transformation-chain encoded into the existing <code>Event.t.source</code> field as <code>/</code>-separated tokens. No schema bump.</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let parts = Lineage.of_source ev.source in
+(* ["binance"; "normalized"; "v1"] *)
+
+match Lineage.push "binance" "normalized" with
+| Some s -&gt; { ev with source = s }
+| None -&gt; (* invalid format / overlong; fail-closed *)</code></pre></div><p>Format: <code>^[a-z0-9_]+(/[a-z0-9_]+)*$</code>, max 64 chars. Enforced by <code>Lineage.is_valid</code>.</p></section><section id="source-map"><h2><span class="num">07</span>Source map</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Module</th><th>Path</th></tr></thead><tbody><tr><td>Canonical symbol</td><td><code>lib/normalization/symbol.{ml,mli}</code></td></tr><tr><td>Validator</td><td><code>lib/normalization/validator.{ml,mli}</code></td></tr><tr><td>Cross-feed basis</td><td><code>lib/normalization/cross_feed.{ml,mli}</code></td></tr><tr><td>Feed health</td><td><code>lib/normalization/feed_health.{ml,mli}</code></td></tr><tr><td>Lineage</td><td><code>lib/normalization/lineage.{ml,mli}</code></td></tr><tr><td>Corporate actions</td><td><code>lib/normalization/data_break.{ml,mli}</code></td></tr><tr><td>Tests</td><td><code>test/normalization/</code></td></tr></tbody></table></div></div></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="data-ingestion.html"><span class="dir">← previous</span><span>Data Ingestion</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="time-series.html"><span class="dir">next →</span><span>Time Series</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ normalization.md
+│ 7 sections · 1 tables · 8 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        market data · 7 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

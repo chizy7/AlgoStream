@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Performance Tuning — AlgoStream</title>
+  <meta name="description" content="">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Performance Tuning — AlgoStream">
+  <meta property="og:description" content="">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">performance tuning</span>
+      </div>
+      <div class="group">
+        <span>operations</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span>reference</span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Operations</p>
+        <h1>performance <span class="accent">tuning</span></h1>
+        <p class="lede"></p>
+        <div class="guide-meta"><span><span class="k">scope</span>runtime · OS · deployment</span><span><span class="k">covers</span>CPU pinning · GC · NUMA · cloud</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/performance_tuning.md" rel="noopener">performance_tuning.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#overview">Overview</a></li><li><a href="#quick-performance-validation">Quick Performance Validation</a></li><li><a href="#system-level-optimizations">System-Level Optimizations</a></li><li><a href="#application-level-tuning">Application-Level Tuning</a></li><li><a href="#environment-specific-tuning">Environment-Specific Tuning</a></li><li><a href="#performance-monitoring">Performance Monitoring</a></li><li><a href="#troubleshooting-performance-issues">Troubleshooting Performance Issues</a></li><li><a href="#platform-specific-optimizations">Platform-Specific Optimizations</a></li><li><a href="#summary">Summary</a></li></ol>
+        </nav>
+        <article class="prose">
+          
+          <section id="overview"><h2><span class="num">01</span>Overview</h2><p>Practical guidance for tuning AlgoStream on real hardware — what the process does for itself, and what the operator has to do at the machine level.</p><p>Every figure below is measured on the machine named beside it. Nothing here is a claim about performance in general, and any target that cannot be validated without a venue is called out as such where it appears.</p></section><section id="quick-performance-validation"><h2><span class="num">02</span>Quick Performance Validation</h2><h3>Immediate Performance Check</h3><div class="code" data-label="bash"><pre><code># Verify current performance
+dune exec bin/algostream.exe test-latency
+
+# Expected results:
+# Average: ~30ns (excellent for sub-5ms target)
+# 95th percentile: sub-1μs on most operations</code></pre></div><h3>Comprehensive Benchmark</h3><div class="code" data-label="bash"><pre><code># Full performance validation (30-60 seconds)
+dune exec bin/algostream.exe benchmark
+
+# Expected results:
+# - 100% pass rate on sub-5ms targets
+# - 90%+ operations achieve sub-1μs latency
+# - Ring buffers: 26-30ns average
+# - SPSC queues: 24-27ns average
+# - Math operations: 21-43ns average</code></pre></div></section><section id="system-level-optimizations"><h2><span class="num">03</span>System-Level Optimizations</h2><h3>CPU Configuration</h3><h4><strong>CPU Isolation</strong> (Linux)</h4><div class="code" data-label="bash"><pre><code># Reserve specific CPU cores for trading
+echo "isolcpus=2,3" &gt;&gt; /boot/cmdline.txt
+echo "nohz_full=2,3" &gt;&gt; /boot/cmdline.txt
+reboot
+
+# Verify isolation
+cat /proc/cmdline | grep isolcpus</code></pre></div><h4>CPU Affinity Setting</h4><div class="code" data-label="bash"><pre><code># Set process affinity to isolated cores
+taskset -c 2,3 dune exec bin/algostream.exe
+
+# Or use numactl for NUMA systems
+numactl --cpunodebind=0 --membind=0 dune exec bin/algostream.exe</code></pre></div><h4>CPU Governor Configuration</h4><div class="code" data-label="bash"><pre><code># Set performance governor for maximum frequency
+echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+
+# Verify setting
+cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor</code></pre></div><h3>Memory Optimization</h3><h4>Memory Allocation</h4><div class="code" data-label="bash"><pre><code># Reduce swapping
+echo "vm.swappiness=1" &gt;&gt; /etc/sysctl.conf
+
+# Memory management tuning
+echo "vm.dirty_ratio=5" &gt;&gt; /etc/sysctl.conf
+echo "vm.dirty_background_ratio=2" &gt;&gt; /etc/sysctl.conf
+
+# Apply changes
+sysctl -p</code></pre></div><h4>Huge Pages Configuration</h4><div class="code" data-label="bash"><pre><code># Enable huge pages for large memory allocations
+echo 1024 &gt; /proc/sys/vm/nr_hugepages
+
+# Verify huge pages
+cat /proc/meminfo | grep Huge</code></pre></div><h4>Memory Pre-allocation</h4><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">(* In your application startup *)
+let initialize_memory_pools () =
+  (* Pre-fault memory to avoid page faults during trading *)
+  let large_buffer = Bytes.create (1024 * 1024 * 100) in (* 100MB *)
+  for i = 0 to (Bytes.length large_buffer) - 4096 do
+    if i mod 4096 = 0 then
+      Bytes.set_uint8 large_buffer i 0
+  done</code></pre></div><h3>Network Optimization</h3><h4>Network Interface Tuning</h4><div class="code" data-label="bash"><pre><code># Increase network buffer sizes
+echo "net.core.rmem_max = 268435456" &gt;&gt; /etc/sysctl.conf
+echo "net.core.wmem_max = 268435456" &gt;&gt; /etc/sysctl.conf
+echo "net.core.netdev_max_backlog = 5000" &gt;&gt; /etc/sysctl.conf
+
+# Apply network settings
+sysctl -p</code></pre></div><h4>Interrupt Affinity</h4><div class="code" data-label="bash"><pre><code># Bind network interrupts to specific CPUs
+echo 1 &gt; /proc/irq/24/smp_affinity  # CPU 0 only
+echo 2 &gt; /proc/irq/25/smp_affinity  # CPU 1 only</code></pre></div><h3>I/O Optimization</h3><h4>Disk I/O Settings</h4><div class="code" data-label="bash"><pre><code># Set I/O scheduler for low latency
+echo noop &gt; /sys/block/sda/queue/scheduler
+
+# Disable disk write barriers for performance (if acceptable)
+mount -o nobarrier,noatime /dev/sda1 /data</code></pre></div></section><section id="application-level-tuning"><h2><span class="num">04</span>Application-Level Tuning</h2><h3>OCaml Runtime Optimization</h3><h4>Garbage Collector Tuning</h4><p>The daemon does this itself behind a flag; there is nothing to export.</p><div class="code" data-label="bash"><pre><code>algostream --gc-tune ...</code></pre></div><p>It sets a <strong>16 MiB minor heap</strong> and <code>space_overhead 80</code>. That is the whole tuning, and the reason it is so short is worth knowing: <strong>OCaml 5 silently ignores several <code>Gc.control</code> fields that still exist in the record.</strong> Measured on the 5.0 switch, requesting <code>major_heap_increment</code> and <code>max_overhead</code> leaves both reading back <code>0</code> — the OCaml 5 major collector is incremental mark-and-sweep with no compaction, so neither knob exists any more. <code>allocation_policy</code> is likewise inert. Setting them does nothing except suggest a tuning that is not happening.</p><p>Two further traps:</p><ul><li><strong><code>minor_heap_size</code> is in words, not bytes.</strong> <code>2 * 1024 * 1024</code> is 2M words — <strong>16 MiB</strong> on 64-bit, not 2 MB. Code that claims the latter is off by a factor of eight.</li><li><strong>Do not touch <code>stack_limit</code> while tuning GC.</strong> It has nothing to do with collection latency, and the previous implementation set it to 1 MiB — a 128x <em>reduction</em> from the 5.0 default of 128 MiB, and a live stack-overflow risk for anything deeply recursive.</li></ul><p>Why the minor heap is the lever that matters here: <strong>OCaml 5 minor collections are stop-the-world across every Domain.</strong> Each one pauses the bus dispatcher, all three processors and the runtime at once. Fewer, larger minor collections is the whole game.</p><p>No code in this project reads <code>OCAMLRUNPARAM</code>, so it is not the supported way to configure the above — use the flag, which logs what it applied. (The OCaml <em>runtime</em> does of course honour it, and <code>v=0x15</code> for verbose GC output remains useful for diagnosis; see Profiling below.)</p><h3>Compilation Optimizations</h3><h4>Build Configuration</h4><div class="code" data-label="bash"><pre><code>dune build --profile release</code></pre></div><p>That is the supported build, and it is what the release container uses.</p><p><strong>This project does not set <code>-O3 -unbox-closures -inline 100</code>,</strong> and an earlier version of this guide implying otherwise was wrong. Those flags require a <strong>flambda</strong> switch; on a stock compiler <code>-O3</code> is silently accepted and does nothing, which is worse than an error because it looks like it worked. If you want them, build a flambda switch first (<code>opam switch create 5.1.0+flambda</code>) and measure before and after — for this workload the hot paths are already allocation-free ring-buffer operations, and the gain has not been demonstrated.</p><h4>C Stub Optimization</h4><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">(* C compilation flags in dune *)
+(foreign_stubs
+ (language c)
+ (names portable_stubs)
+ (flags (:standard -O3 -fPIC -march=native -mtune=native -flto)))</code></pre></div><h3>Data Structure Optimization</h3><h4>Memory Layout Optimization</h4><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">(* Cache-friendly data structures *)
+type market_tick = {
+  timestamp: int64;      (* 8 bytes *)
+  price: int64;          (* 8 bytes - use fixed point for speed *)
+  volume: int32;         (* 4 bytes *)
+  flags: int;            (* 4 bytes - pack multiple booleans *)
+} (* Total: 24 bytes - single cache line *)
+
+(* Avoid boxed values in hot paths *)
+type price = int64  (* Instead of float for critical paths *)</code></pre></div><h4>Buffer Pre-allocation</h4><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">(* Pre-allocate buffers to avoid allocation in critical paths *)
+module BufferPool = struct
+  let market_data_pool = RingBuffer.create 10000 empty_market_data
+  let order_pool = RingBuffer.create 1000 empty_order
+  let message_pool = Array.make 1000 (Bytes.create 1024)
+
+  let get_message_buffer () =
+    (* Reuse pre-allocated buffers *)
+    Array.get message_pool (Random.int 1000)
+end</code></pre></div></section><section id="environment-specific-tuning"><h2><span class="num">05</span>Environment-Specific Tuning</h2><h3>Development Environment</h3><h4>Fast Iteration Setup</h4><div class="code" data-label="bash"><pre><code># Quick build and test cycle
+alias build="dune build"
+alias test="dune exec bin/algostream.exe test-latency"
+alias bench="dune exec bin/algostream.exe benchmark"
+
+# Watch mode for continuous testing
+dune build --watch &amp;</code></pre></div><h4>Debug Performance Issues</h4><div class="code" data-label="bash"><pre><code># Profile with perf (Linux)
+perf record -g dune exec bin/algostream.exe benchmark
+perf report
+
+# Memory profiling
+valgrind --tool=massif dune exec bin/algostream.exe test-latency</code></pre></div><h3>Production Environment</h3><h4>Docker Container Optimization</h4><p>These now exist in the repository rather than as suggestions here:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Artifact</th><th>Path</th></tr></thead><tbody><tr><td>Release image</td><td><code>Dockerfile</code> (multi-stage, non-root, no sudo)</td></tr><tr><td>Observability stack</td><td><code>docker-compose.prod.yml</code></td></tr><tr><td>Kubernetes</td><td><code>k8s/deployment.yaml</code>, <code>k8s/service.yaml</code></td></tr><tr><td>Blue/green</td><td><code>scripts/blue-green.sh</code></td></tr></tbody></table></div></div><p>See <code>docs/guides/deployment.md</code>, which also records what has actually been exercised and what has only been schema-validated.</p><p>One correction to earlier guidance: the image is <strong>Debian slim, not Alpine</strong>. OCaml against musl is a fight with no measurable latency payoff for this workload, and the runtime layer is a comparable size either way once the libraries the binary actually needs are accounted for.</p><h3>Cloud Environment (AWS/GCP/Azure)</h3><h4>Instance Selection</h4><div class="code" data-label="bash"><pre><code># AWS - Use compute-optimized instances
+# Recommended: c5n.xlarge or c5n.2xlarge for low latency
+# Enhanced networking: SR-IOV and DPDK support
+
+# GCP - Use high-CPU instances
+# Recommended: c2-standard-4 or c2-standard-8
+
+# Azure - Use compute-optimized VMs
+# Recommended: F4s_v2 or F8s_v2</code></pre></div><h4>Network Optimization</h4><div class="code" data-label="bash"><pre><code># AWS Enhanced Networking
+aws ec2 modify-instance-attribute --instance-id i-xxx --ena-support
+
+# Placement groups for low latency
+aws ec2 create-placement-group --group-name algostream-cluster --strategy cluster</code></pre></div></section><section id="performance-monitoring"><h2><span class="num">06</span>Performance Monitoring</h2><h3>Real-Time Monitoring</h3><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">(* Built-in performance tracking *)
+module PerformanceTracker = struct
+  let latency_histogram = Array.make 1000 0
+
+  let track_latency name f =
+    let start_time = Time_utils.Clock.now_monotonic_ns () in
+    let result = f () in
+    let end_time = Time_utils.Clock.now_monotonic_ns () in
+    let latency_ns = Int64.sub end_time start_time in
+
+    (* Log slow operations *)
+    if Int64.compare latency_ns 1000L &gt; 0 then
+      Printf.printf "SLOW: %s took %Ld ns\n" name latency_ns;
+
+    result
+end</code></pre></div><h3>Automated Performance Regression Detection</h3><div class="code" data-label="bash"><pre><code>#!/bin/bash
+# performance_check.sh
+
+# Run benchmark and extract key metrics
+RESULT=$(dune exec bin/algostream.exe benchmark 2&gt;/dev/null | grep "Average:")
+CURRENT_LATENCY=$(echo $RESULT | grep -o '[0-9]\+ ns' | head -1 | cut -d' ' -f1)
+
+# Alert if performance degrades
+THRESHOLD=100  # 100ns threshold
+if [ "$CURRENT_LATENCY" -gt "$THRESHOLD" ]; then
+    echo "PERFORMANCE REGRESSION: Current latency $CURRENT_LATENCY ns exceeds threshold $THRESHOLD ns"
+    exit 1
+else
+    echo "PERFORMANCE OK: Current latency $CURRENT_LATENCY ns"
+fi</code></pre></div></section><section id="troubleshooting-performance-issues"><h2><span class="num">07</span>Troubleshooting Performance Issues</h2><h3>Common Performance Problems</h3><h4>High Latency Symptoms</h4><div class="code" data-label="bash"><pre><code># Check for performance issues
+dune exec bin/algostream.exe test-latency
+
+# If latency &gt; 1μs consistently:
+# 1. Check CPU frequency scaling
+cat /proc/cpuinfo | grep MHz
+
+# 2. Check for thermal throttling
+dmesg | grep -i thermal
+
+# 3. Check system load
+top -p $(pgrep algostream)</code></pre></div><h4>Memory Issues</h4><div class="code" data-label="bash"><pre><code># Check memory usage
+pmap $(pgrep algostream)
+
+# Check for memory leaks
+valgrind --leak-check=full dune exec bin/algostream.exe test-latency
+
+# Check GC statistics
+OCAMLRUNPARAM=v=0x15 dune exec bin/algostream.exe   # verbose GC, for diagnosis only</code></pre></div><h4>Network Issues</h4><div class="code" data-label="bash"><pre><code># Check network latency
+ping -c 10 exchange.example.com
+
+# Check for packet loss
+netstat -i
+
+# Monitor network interrupts
+watch -n 1 cat /proc/interrupts</code></pre></div><h3>Performance Tuning Checklist</h3><h4>Pre-Production Checklist</h4><ul class="task"><li><span class="box" aria-hidden="true">&#183;</span>CPU isolation configured</li><li><span class="box" aria-hidden="true">&#183;</span>Memory pre-allocation implemented</li><li><span class="box" aria-hidden="true">&#183;</span>GC parameters optimized</li><li><span class="box" aria-hidden="true">&#183;</span>Network buffers increased</li><li><span class="box" aria-hidden="true">&#183;</span>Disk I/O optimized</li><li><span class="box" aria-hidden="true">&#183;</span>Compilation flags optimized</li><li><span class="box" aria-hidden="true">&#183;</span>Benchmark passing (100% sub-5ms)</li><li><span class="box" aria-hidden="true">&#183;</span>Stress test validated (100k iterations)</li></ul><h4>Production Monitoring</h4><ul class="task"><li><span class="box" aria-hidden="true">&#183;</span>Real-time latency monitoring</li><li><span class="box" aria-hidden="true">&#183;</span>Performance regression alerts</li><li><span class="box" aria-hidden="true">&#183;</span>Resource utilization tracking</li><li><span class="box" aria-hidden="true">&#183;</span>Error rate monitoring</li><li><span class="box" aria-hidden="true">&#183;</span>Throughput measurement</li></ul></section><section id="platform-specific-optimizations"><h2><span class="num">08</span>Platform-Specific Optimizations</h2><h3>macOS (Development)</h3><div class="code" data-label="bash"><pre><code># Increase file descriptor limits
+ulimit -n 4096
+
+# Check CPU throttling
+sudo powermetrics -s cpu_power -a --hide-cpu-duty-cycle
+
+# Memory pressure monitoring
+memory_pressure</code></pre></div><h3>Linux (Production)</h3><div class="code" data-label="bash"><pre><code># Real-time kernel (if available)
+sudo apt-get install linux-rt
+
+# CPU isolation
+echo "isolcpus=2,3" &gt;&gt; /boot/cmdline.txt
+
+# IRQ affinity
+echo 1 &gt; /proc/irq/24/smp_affinity</code></pre></div><h3>Windows (Development)</h3><div class="code" data-label="powershell"><pre><code># Set process priority
+Start-Process "algostream.exe" -Priority "High"
+
+# Check CPU usage
+Get-Counter "\Processor(_Total)\% Processor Time"</code></pre></div></section><section id="summary"><h2><span class="num">09</span>Summary</h2><p>Tuning splits into three layers, and only the first is the process's own job:</p><ol><li><strong>In-process</strong> — <code>--gc-tune</code> (16 MiB minor heap, <code>space_overhead 80</code>) and <code>--pin-cores</code>. Both default off, because both are pessimisations on a machine you do not own.</li><li><strong>Machine-level</strong> — CPU governor, turbo, <code>isolcpus</code>, hugepages, NUMA binding via <code>numactl</code>. These need root and are the operator's job; the process cannot set them for itself.</li><li><strong>Measurement</strong> — <code>make paced-bench</code> for latency at a stated load, <code>make bench-json</code> for the core suite, <code>perf</code> and <code>massif</code> in the dev container for anything deeper.</li></ol><p>Measure before and after. The hot paths here are already allocation-free ring-buffer operations, so most further tuning has a smaller effect than the measurement noise unless it is verified.</p></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="reporting.html"><span class="dir">← previous</span><span>Reporting</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="security.html"><span class="dir">next →</span><span>Security</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ performance_tuning.md
+│ 9 sections · 1 tables · 28 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        operations · 9 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

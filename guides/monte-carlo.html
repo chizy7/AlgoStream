@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Monte Carlo — AlgoStream</title>
+  <meta name="description" content="lib/rng, lib/stochastic and lib/montecarlo answer one question: is this backtest result distinguishable from luck?">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Monte Carlo — AlgoStream">
+  <meta property="og:description" content="lib/rng, lib/stochastic and lib/montecarlo answer one question: is this backtest result distinguishable from luck?">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">monte carlo</span>
+      </div>
+      <div class="group">
+        <span>research</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Research</p>
+        <h1>monte <span class="accent">carlo</span></h1>
+        <p class="lede"><code>lib/rng</code>, <code>lib/stochastic</code> and <code>lib/montecarlo</code> answer one question: is this backtest result distinguishable from luck?</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/montecarlo/</span><span><span class="k">covers</span>bootstrap · regimes · stress</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/monte_carlo.md" rel="noopener">monte_carlo.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#reuse-stance">Reuse stance</a></li><li><a href="#why-the-rng-was-replaced">Why the RNG was replaced</a></li><li><a href="#the-determinism-contract">The determinism contract</a></li><li><a href="#two-modes">Two modes</a></li><li><a href="#bootstrap-pick-the-right-variant">Bootstrap: pick the right variant</a></li><li><a href="#regime-simulation-precisely">Regime simulation, precisely</a></li><li><a href="#confidence-intervals">Confidence intervals</a></li><li><a href="#scaling-measured">Scaling, measured</a></li><li><a href="#stress-scenarios">Stress scenarios</a></li><li><a href="#event-time-invariant">Event-time invariant</a></li><li><a href="#tests-benchmarks">Tests + benchmarks</a></li></ol>
+        </nav>
+        <article class="prose">
+          <section class="intro"><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Layer</th><th>Modules</th></tr></thead><tbody><tr><td>Generator</td><td><code>Rng</code> (own library, zero deps)</td></tr><tr><td>Sampling</td><td><code>Variate</code>, <code>Cholesky</code>, <code>Resample</code>, <code>Quantile</code></td></tr><tr><td>Paths</td><td><code>Path</code>, <code>Regime_sim</code>, <code>Stress</code>, <code>Generator</code></td></tr><tr><td>Execution</td><td><code>Pool</code>, <code>Engine</code></td></tr></tbody></table></div></div></section>
+          <section id="reuse-stance"><h2><span class="num">01</span>Reuse stance</h2><p><code>Ornstein_uhlenbeck.simulate</code>, <code>Garch11</code>, <code>Distribution</code>, <code>Analytics.Regime</code> and the whole backtest engine already existed. New here: the generator, the samplers, the bootstrap family, the regime <em>sampler</em> (the existing <code>Regime</code> is a detector with no transition model), the worker pool, and the GARCH path sampler — <code>Garch11.forecast</code> returns a deterministic σ² sequence and does not simulate.</p></section><section id="why-the-rng-was-replaced"><h2><span class="num">02</span>Why the RNG was replaced</h2><p><code>Math_utils.FastRandom</code> is unusable for Monte Carlo, for three separate reasons:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let create_xorshift seed =
+  { x = Int64.of_int seed; y = 362436069L; z = 521288629L; w = 88675123L }</code></pre></div><ul><li><strong>Only <code>x</code> is seeded.</strong> <code>y</code>, <code>z</code> and <code>w</code> are shared constants, so seeds <code>1 .. 10_000</code> — precisely what a simulation batch uses — produce heavily correlated streams.</li><li><strong><code>uniform_float</code> can return exactly <code>0.0</code>,</strong> and <code>normal_sample</code> takes <code>log u1</code> with no clamp: <code>-inf</code>, then <code>nan</code>, silently poisoning a path.</li><li><strong><code>seed = 0</code></strong> gives a partially-zero xorshift state.</li></ul><p><code>lib/rng</code> is SplitMix64 seed expansion into xoshiro256++. It is its own library with zero dependencies, because <code>advanced_models</code> depends on it (for the OU path sampler) while <code>stochastic</code> depends on both — putting <code>Rng</code> alongside the samplers would have closed a cycle.</p><p><code>test/rng/test_substream.ml</code> is the direct regression: across 64 adjacent index pairs, the maximum absolute correlation must stay under 0.10. The old construction fails that catastrophically.</p><p><strong>Conformance is checked, not assumed.</strong> <code>test_reference_vectors.ml</code> pins SplitMix64 against its published seed-0 outputs, derives one xoshiro value entirely by hand (<code>rotl(1+4, 23) + 1 = 0x2800001</code>), and then checks <code>Rng.create</code> and <code>Rng.substream</code> end to end against an independently written implementation of the same spec. An earlier draft of that file asserted a remembered output table and failed — which is why the vectors are now derived rather than recalled.</p></section><section id="the-determinism-contract"><h2><span class="num">03</span>The determinism contract</h2><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">val substream : root_seed:int64 -&gt; index:int -&gt; t</code></pre></div><p><code>substream</code> is a <strong>pure function of its arguments</strong>: it does not depend on call order, on any generator having been drawn from, or on which Domain calls it. Run <em>k</em> of a batch therefore draws the same numbers no matter how many cores execute the batch.</p><p>Each run takes two disjoint substreams — <code>2i</code> for data and <code>2i+1</code> for execution. Keeping them separate is common-random-numbers discipline: changing the latency model must not shift the price path, or an A/B comparison drowns in path noise instead of measuring the change.</p><p><code>Pool.map</code> completes the guarantee. Work is claimed from an atomic cursor and written to slot <code>i</code> of a pre-allocated array — never appended in completion order — and an exception surfaces the <em>lowest</em> failing index. <code>test/montecarlo/test_pool.ml</code> asserts bit-identical output at 1, 2, 4 and 8 Domains, including under deliberately unequal per-item cost.</p></section><section id="two-modes"><h2><span class="num">04</span>Two modes</h2><p>"10,000+ runs" and "path-dependent scenario generation" cost very differently, so both ship and both numbers are published rather than quoting the cheap one.</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Mode</th><th>Resamples</th><th>Cost</th><th>Captures</th></tr></thead><tbody><tr><td>Path-level (<code>run_paths</code>)</td><td>the realized return series</td><td>~1,350 runs/s single-domain</td><td>is this curve luck?</td></tr><tr><td>Engine-level (<code>run</code>)</td><td>a synthetic market, full replay</td><td>~1 s/run</td><td>stops, sizing, impact, fills</td></tr></tbody></table></div></div><p>Only engine-level involves the fill model. Path-level is the right tool for "is this equity curve distinguishable from noise", and it is what makes 10,000 runs routine.</p></section><section id="bootstrap-pick-the-right-variant"><h2><span class="num">05</span>Bootstrap: pick the right variant</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Variant</th><th>Preserves</th><th>Use when</th></tr></thead><tbody><tr><td><code>iid</code></td><td>nothing</td><td>the series really is iid</td></tr><tr><td><code>moving_block</code></td><td>dependence up to block length</td><td>rarely — under-samples the ends</td></tr><tr><td><code>circular_block</code></td><td>same, every observation equally likely</td><td>the usual default</td></tr><tr><td><code>stationary</code></td><td>same, and the resample is genuinely stationary</td><td>Politis-Romano; preferred</td></tr></tbody></table></div></div><p>The variant matters less than the block length. <code>rule_of_thumb ~n</code> gives the conventional <code>n^(1/3)</code>. The automatic Politis-White selector is deliberately absent: it needs a flat-top-kernel spectral density estimate that is not worth hand-rolling to a defensible standard, and a wrong automatic answer is worse than an explicit rule of thumb.</p><p><strong><code>joint_index</code> is the one that matters for pairs.</strong> Bootstrapping each leg independently destroys the cointegration the strategy exists to trade, so the resampled world contains no tradable relationship and the Monte Carlo faithfully reports a strategy that cannot work. Resample the shared <em>time index</em> and apply it to every series. The test measures exactly this: source correlation 0.9+, preserved above 0.85 by <code>joint_index</code>, destroyed to under 0.2 by independent resampling.</p></section><section id="regime-simulation-precisely"><h2><span class="num">06</span>Regime simulation, precisely</h2><p><code>Analytics.Regime</code> is a detector: threshold rules with dwell hysteresis that label a series it is shown. <code>Regime_sim</code> adds the missing generative half — label a historical series by driving <code>Per_symbol</code> headlessly, count the transitions, and sample the resulting chain.</p><p><strong>What this is not:</strong> a hidden Markov model. There is no Baum-Welch, no EM, no state uncertainty — the states are taken as observed, because the detector observed them. The detector's threshold bias is inherited wholesale. What it <em>does</em> capture, and an iid bootstrap cannot, is that calm periods cluster, crises are sticky, and the transition between them is abrupt.</p><p><code>stationary_distribution</code> iterates from the chain's own <code>initial</code> rather than from uniform. A fitted chain is usually reducible — a regime the detector never labelled ends up with an absorbing self-loop from the smoothing — and a uniform start parks probability in states the process can never reach. That disagreement between the analytic figure and the simulated occupancy is what the test caught.</p></section><section id="confidence-intervals"><h2><span class="num">07</span>Confidence intervals</h2><p>Everything in <code>Quantile</code> sorts the full sample. <strong>Do not use <code>Math_utils.Statistics.create_percentile_tracker</code></strong>: it is reservoir-sampled (approximate) <em>and</em> seeded with <code>Random.State.make_self_init ()</code> (irreproducible). Both properties disqualify it, and <code>make rng-lint</code> enforces the ban.</p><p>Working in empirical quantiles also sidesteps the codebase-wide "no more than two significant figures" caveat on <code>Distribution</code> — a percentile interval never inverts a CDF.</p><p><code>mc_standard_error</code> is what makes a 99% interval honest. At 10,000 runs the 99% level rests on ~100 tail observations, so it is materially less certain than the 95% level, and the summary prints how much:</p><div class="code" data-label="output"><pre><code>  sharpe   mean=-46.95  p05=-60.28  p50=-47.20  p95=-32.16  ci95=[-63.30, -28.85]  mc_se(p05)=0.368</code></pre></div></section><section id="scaling-measured"><h2><span class="num">08</span>Scaling, measured</h2><p><code>mc-bench</code> publishes the <em>measured</em> speedup rather than claiming linearity:</p><div class="code" data-label="output"><pre><code>mc.path_level: domains=1 runs=4000 elapsed=2988ms 1338 runs/s speedup=1.00x
+mc.path_level: domains=2 runs=4000 elapsed=1601ms 2498 runs/s speedup=1.87x
+mc.path_level: domains=4 runs=4000 elapsed=938ms  4264 runs/s speedup=3.19x
+mc.path_level: domains=8 runs=4000 elapsed=708ms  5647 runs/s speedup=4.22x</code></pre></div><p>4.2× on 8 cores, matching the 4–6× the <code>Pool</code> documentation predicts. OCaml 5 has a shared heap and the metric pipeline allocates, so this is GC-bound before it is core-bound. 10,000 path-level runs is roughly two seconds.</p></section><section id="stress-scenarios"><h2><span class="num">09</span>Stress scenarios</h2><p>The presets are <strong>stylized, not replays</strong>. <code>black_monday_1987</code> applies a gap and volatility multiplier of roughly the magnitude that day is remembered for; it is not a tick replay, and this system has no such data. Round numbers, two significant figures, shaped what-ifs.</p><p>When the sample is long enough, <code>Stress.conditional</code> is strictly preferable: it bootstraps from the worst windows the instrument <em>actually</em> experienced, so the magnitudes are empirical rather than invented. Reach for the presets only when you need a shock more extreme than your history contains.</p></section><section id="event-time-invariant"><h2><span class="num">10</span>Event-time invariant</h2><p>None of these layers reads a clock; <code>make mc-clock-lint</code>, <code>make sto-clock-lint</code> and <code>make rng-clock-lint</code> enforce it, and CI runs the same checks with a call-shaped pattern. The one wall- clock read in the whole subsystem is the <code>wall_ns</code> telemetry field in the bench, which no assertion touches.</p></section><section id="tests-benchmarks"><h2><span class="num">11</span>Tests + benchmarks</h2><div class="code" data-label="bash"><pre><code>dune runtest test/rng           # 23 tests: conformance, substream independence, determinism
+dune runtest test/stochastic    # 57 tests across 5 suites
+dune runtest test/montecarlo    # 26 tests across 4 suites
+make sto-bench                  # Apple Silicon: uniform ~38M draws/s, normal ~13.6M draws/s
+make mc-bench                   # see the speedup table above
+make determinism-lint</code></pre></div><p>Property tests rather than pinned numbers where possible: <code>Variate.normal</code> passes KS against <code>Distribution.Normal.cdf</code> and Jarque-Bera; the GARCH sampler must show Ljung-Box autocorrelation in <em>squared</em> returns but not raw ones (volatility clustering, the property iid bootstrap destroys); <code>multivariate_gbm</code> must recover a 0.70 input correlation within ±0.02.</p></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="backtesting.html"><span class="dir">← previous</span><span>Backtesting</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="performance-analytics.html"><span class="dir">next →</span><span>Performance Analytics</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ monte_carlo.md
+│ 11 sections · 3 tables · 5 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        research · 11 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

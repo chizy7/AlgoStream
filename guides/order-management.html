@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Order Management — AlgoStream</title>
+  <meta name="description" content="lib/order_management is the layer that turns strategy signals into actual orders: pick a venue, size the position, walk the book to estimate impact, then analyze execution quality ">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Order Management — AlgoStream">
+  <meta property="og:description" content="lib/order_management is the layer that turns strategy signals into actual orders: pick a venue, size the position, walk the book to estimate impact, then analyze execution quality ">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">order management</span>
+      </div>
+      <div class="group">
+        <span>strategy</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Strategy</p>
+        <h1>order <span class="accent">management</span></h1>
+        <p class="lede"><code>lib/order_management</code> is the layer that turns strategy signals into actual orders: pick a venue, size the position, walk the book to estimate impact, then analyze execution quality post-trade. Six modules:</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/order_management/</span><span><span class="k">covers</span>routing · sizing · TCA · impact</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/order_management.md" rel="noopener">order_management.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#reuse-stance">Reuse stance</a></li><li><a href="#end-to-end-worked-example">End-to-end worked example</a></li><li><a href="#venue-model">Venue model</a></li><li><a href="#routing-strategies">Routing strategies</a></li><li><a href="#position-sizing-math">Position sizing math</a></li><li><a href="#tca-report">TCA report</a></li><li><a href="#book-impact">Book impact</a></li><li><a href="#event-time-invariant">Event-time invariant</a></li></ol>
+        </nav>
+        <article class="prose">
+          <section class="intro"><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Module</th><th>Purpose</th></tr></thead><tbody><tr><td><code>Venue</code></td><td>Typed venue (fee tiers, supported kinds, latency) replacing untyped <code>exchange : string</code></td></tr><tr><td><code>Order_state</code></td><td>Explicit state-machine helpers on top of <code>Domain.Order.order_status</code></td></tr><tr><td><code>Position_sizing</code></td><td>Kelly (full / fractional / discrete) + volatility scaling + ATR</td></tr><tr><td><code>Routing</code></td><td>SOR across venue snapshots with three strategies</td></tr><tr><td><code>Execution_quality</code></td><td>Post-trade TCA report (slippage / VWAP-diff / IS / timing)</td></tr><tr><td><code>Book_impact</code></td><td>Walk-the-book + Almgren square-root permanent impact</td></tr></tbody></table></div></div><p>Pure functions — no Domain ownership, no SPSC, no <code>Atomic.set</code>. Strategies own state and pass values through. Same architectural shape as <code>lib/advanced_models/</code>.</p></section>
+          <section id="reuse-stance"><h2><span class="num">01</span>Reuse stance</h2><p>Order types (Market / Limit / Stop / Stop_limit / Iceberg) were already implemented in <code>lib/domain/orders/order.ml</code> before this library existed. The "build order types" requirement is satisfied by that existing variant — this library doesn't duplicate it. Instead it adds the missing state-machine accessors (<code>Order_state.is_terminal</code>, <code>is_active</code>, <code>can_transition</code>, <code>transition</code>) which formalize the transition table that <code>Domain.Order</code> left implicit.</p><p>Similarly, <code>Trade.Trade_aggregation.execution_quality</code> already had slippage and implementation-shortfall formulas — <code>Execution_quality</code> wraps them into a richer per-order report with timing fields and fill_rate. <code>Order_book.order_book</code> already had <code>depth_at_price</code> and <code>imbalance</code> — <code>Book_impact</code> walks the levels and produces the avg-fill-price estimate.</p></section><section id="end-to-end-worked-example"><h2><span class="num">02</span>End-to-end worked example</h2><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">open Algostream_order_management
+open Algostream_domain_orders
+open Algostream_domain_market
+
+(* 1. Strategy generates an edge estimate from upstream layers (Pairs + GARCH). *)
+let mean_return = 0.05      (* per-period expected return *)
+let variance = 0.04         (* per-period variance from GARCH *)
+
+(* 2. Size via fractional Kelly. *)
+let kelly_f =
+  Position_sizing.Kelly.fractional ~mean:mean_return ~variance ~fraction:0.25
+(* kelly_f ≈ 0.3125; cap-pct guard against over-betting *)
+
+let shares =
+  Position_sizing.Kelly.size_position ~capital:100_000.0
+    ~kelly_fraction:kelly_f ~price:100.0 ~cap_pct:0.5 ()
+(* shares = 312.5 (under the 0.5 cap of 500) *)
+
+(* 3. Build the order. *)
+let order =
+  Order.create_market_order ~id:"o-1" ~client_order_id:"c-1"
+    ~symbol:"BTCUSDT" ~side:Order.Buy ~quantity:shares
+    ~exchange:"" (* will be set after routing *) ()
+
+(* 4. Route across venues. *)
+let snapshots =
+  [ Routing.{ venue = Venue.binance_spot;
+              best_bid = 50_000.0; best_ask = 50_010.0;
+              bid_depth = 5_000.0; ask_depth = 5_000.0; monthly_volume = 1_000_000.0 };
+    Routing.{ venue = Venue.coinbase_advanced;
+              best_bid = 50_005.0; best_ask = 50_015.0;
+              bid_depth = 2_000.0; ask_depth = 2_000.0; monthly_volume = 500_000.0 } ]
+
+let decision =
+  Routing.route ~order ~venues:snapshots ~strategy:Routing.Smart_split ()
+(* decision.allocations: which venue gets what quantity at what expected price + fee *)
+
+(* 5. Pre-trade book impact sanity check on the primary venue's book. *)
+let impact_estimate =
+  Book_impact.estimate_from_book ~side:Order.Buy ~quantity:shares
+    ~book:(* the local book for the primary venue *) ...
+
+(* 6. (... submit via bus events, wait for fills, then ...) *)
+
+(* 7. Post-trade TCA. *)
+let fills =
+  [ Execution_quality.{ ts_ns = 1_000_000L; price = 50_012.0; quantity = 200.0;
+                        venue = "binance_spot"; commission = 5.0 };
+    Execution_quality.{ ts_ns = 1_500_000L; price = 50_015.0; quantity = 112.5;
+                        venue = "binance_spot"; commission = 3.0 } ]
+
+let report =
+  Execution_quality.analyze ~order ~decision_price:50_010.0 ~decision_ts_ns:0L
+    ~fills ~market_vwap:50_013.0
+(* report.slippage_bps, report.implementation_shortfall_bps, report.fill_rate, ... *)</code></pre></div></section><section id="venue-model"><h2><span class="num">03</span>Venue model</h2><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type fee_tier = {
+  maker_bps : float;
+  taker_bps : float;
+  volume_threshold : float;  (* monthly notional *)
+}
+
+type t = {
+  name : string;
+  asset_class : Asset.asset_class;
+  fee_tiers : fee_tier list;     (* sorted ascending *)
+  base_latency_us : float;
+  supports_iceberg : bool;
+  supports_stop : bool;
+  min_order_size : float;
+}</code></pre></div><p>Default constructors: <code>Venue.binance_spot</code> (10/10 bps, supports iceberg + stop) and <code>Venue.coinbase_advanced</code> (60/80 bps, stop only — Coinbase Advanced Trade doesn't expose iceberg natively).</p><p><code>effective_fee_bps t ~taker ~monthly_volume</code> walks <code>fee_tiers</code> and picks the active tier. Pure function; no I/O.</p></section><section id="routing-strategies"><h2><span class="num">04</span>Routing strategies</h2><!-- Replaces the `flowchart LR` at docs/guides/order_management.md:121. -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Routing.route</span>
+    <span>fan-in</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 900 268" role="img"
+         aria-label="An order and three venue snapshots feed Routing.route, which produces a routing decision carrying allocations, expected average price, expected cost in basis points, and any unallocated quantity.">
+      <defs>
+        <marker id="ah-om1" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <rect class="d-node-a" x="20" y="24" width="190" height="42" rx="2"/>
+      <text class="d-title" x="36" y="50">Order</text>
+
+      <rect class="d-node" x="20" y="86" width="190" height="42" rx="2"/>
+      <text class="d-title" x="36" y="112">venue snapshot 1</text>
+
+      <rect class="d-node" x="20" y="148" width="190" height="42" rx="2"/>
+      <text class="d-title" x="36" y="174">venue snapshot 2</text>
+
+      <rect class="d-node" x="20" y="210" width="190" height="42" rx="2"/>
+      <text class="d-title" x="36" y="236">venue snapshot 3</text>
+
+      <rect class="d-node-a" x="350" y="112" width="180" height="52" rx="2"/>
+      <text class="d-title" x="366" y="143">Routing.route</text>
+
+      <path class="d-edge" marker-end="url(#ah-om1)" d="M210,45  C 280,45  300,138 344,138"/>
+      <path class="d-edge" marker-end="url(#ah-om1)" d="M210,107 C 280,107 300,138 344,138"/>
+      <path class="d-edge" marker-end="url(#ah-om1)" d="M210,169 C 280,169 300,138 344,138"/>
+      <path class="d-edge" marker-end="url(#ah-om1)" d="M210,231 C 280,231 300,138 344,138"/>
+
+      <rect class="d-node" x="640" y="76" width="240" height="124" rx="2"/>
+      <text class="d-sub"   x="656" y="100">routing_decision</text>
+      <text class="d-title" x="656" y="123">allocations</text>
+      <text class="d-title" x="656" y="143">expected_avg_price</text>
+      <text class="d-title" x="656" y="163">expected_cost_bps</text>
+      <text class="d-title" x="656" y="183">unallocated</text>
+
+      <path class="d-edge" marker-end="url(#ah-om1)" d="M530,138 L634,138"/>
+    </svg>
+  </div>
+</div><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Strategy</th><th>What it does</th></tr></thead><tbody><tr><td><code>Cheapest_venue</code></td><td>Single-venue route to the lowest-fee venue (regardless of price). Use for cost-sensitive flow on liquid symbols.</td></tr><tr><td><code>Best_price</code></td><td>Single-venue route to the tightest quote on the order's side. Use when price &gt; fees in your cost budget.</td></tr><tr><td><code>Smart_split</code></td><td>Multi-venue: sort by <code>(price + taker_fee_bps · 1e-4)</code> ascending; walk depth until quantity is met. Reports <code>unallocated</code> if no venue covers the rest. Default.</td></tr></tbody></table></div></div><p>Filter pre-applied: venues that don't support the order's kind (e.g., iceberg on Coinbase Advanced) are excluded. If no eligible venue, <code>decision.unallocated = order.quantity</code> and <code>decision.allocations = []</code>.</p></section><section id="position-sizing-math"><h2><span class="num">05</span>Position sizing math</h2><p><strong>Kelly (continuous returns)</strong>: <code>f* = mean / variance</code>. With <code>mean=0.05, variance=0.04</code>, <code>f* = 1.25</code>. Real-world sizing caps this — <code>size_position ~cap_pct:1.0</code> would still convert 1.25 into 1.0 (100% capital) before computing shares. Reduce with <code>fractional ~fraction:0.25</code> for the typical "quarter Kelly" practice (reduces variance ~93% while sacrificing only ~25% of geometric growth).</p><p><strong>Kelly (discrete bets)</strong>: <code>from_winrate ~win_prob ~win_loss_ratio</code> returns <code>p − q/b</code>. For 60% win rate with 2:1 odds: <code>0.6 − 0.4/2 = 0.4</code>. No edge → 0.</p><p><strong>Volatility scaling</strong>: <code>size = target_vol_dollars / (price · asset_vol_decimal)</code>, capped at <code>capital / price</code> (100% exposure). Targets a per-period dollar volatility on the position, decoupled from instrument vol.</p><p><strong>ATR sizing</strong>: <code>shares = (capital · risk_pct) / atr</code>. Risks <code>risk_pct</code> of capital under a stop placed <code>atr</code> units from entry. Capped at <code>capital / price</code>.</p></section><section id="tca-report"><h2><span class="num">06</span>TCA report</h2><p>The <code>analyze</code> function takes:</p><ul><li><code>order</code> — the original order (for total quantity, side)</li><li><code>decision_price</code> — the price at which the strategy decided to trade</li><li><code>decision_ts_ns</code> — the timestamp at which the strategy decided (for latency)</li><li><code>fills</code> — list of partial fills with <code>ts_ns, price, quantity, venue, commission</code></li><li><code>market_vwap</code> — VWAP of the market over the fill window (caller computes from market data)</li></ul><p>And produces:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Field</th><th>Meaning</th></tr></thead><tbody><tr><td><code>fill_rate</code></td><td>filled / ordered ∈ [0, 1]</td></tr><tr><td><code>avg_fill_price</code></td><td>size-weighted average</td></tr><tr><td><code>slippage_bps</code></td><td>(avg_fill − decision) / decision · 1e4, signed (positive = adverse)</td></tr><tr><td><code>vwap_diff_bps</code></td><td>(avg_fill − market_vwap) / market_vwap · 1e4, signed</td></tr><tr><td><code>implementation_shortfall_bps</code></td><td>|slippage| + commission_bps</td></tr><tr><td><code>time_to_full_fill_ns</code></td><td><code>Some t</code> iff <code>fill_rate = 1.0</code></td></tr><tr><td><code>first_fill_latency_ns</code></td><td>first fill ts − decision ts</td></tr></tbody></table></div></div><p>Signed slippage convention: for buys, paying more than <code>decision_price</code> is positive (adverse); for sells, receiving less than <code>decision_price</code> is also positive.</p></section><section id="book-impact"><h2><span class="num">07</span>Book impact</h2><p><strong><code>estimate_from_book</code></strong> walks the local order book in price priority (asks for buys, bids for sells — <code>Order_book.order_book</code> pre-sorts on construction) and reports the realistic fill estimate. Pre-trade sanity check: if your strategy thinks the trade is profitable but walking the book shows slippage that exceeds the edge, don't submit.</p><p><strong><code>permanent_impact</code></strong> uses Almgren et al. (2005) square-root model: <code>impact_bps = γ · σ · √(quantity / daily_volume) · 1e4</code></p><p>with default <code>γ = 0.5</code> (literature standard). Participation rate (<code>quantity / daily_volume</code>) is capped at 1.0 — orders larger than daily volume aren't single-day executable. Override γ for assets where you've calibrated your own value.</p></section><section id="event-time-invariant"><h2><span class="num">08</span>Event-time invariant</h2><p>CI <code>for dir in …</code> clock-lint loop covers <code>lib/order_management</code> (<code>make oms-clock-lint</code> locally). All time inputs are explicit <code>int64</code> ns parameters — no <code>Clock.now_*</code>, no <code>Unix.gettimeofday</code>. <code>Order_state.transition</code> deliberately returns the new <code>status</code> rather than mutating the order in place; the caller chooses when to apply via <code>Order.update_status</code> (which internally uses <code>Timestamp.now ()</code> from the Domain layer).</p></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="advanced-models.html"><span class="dir">← previous</span><span>Advanced Models</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="risk-management.html"><span class="dir">next →</span><span>Risk Management</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ order_management.md
+│ 8 sections · 3 tables · 2 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        strategy · 8 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

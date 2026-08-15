@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Reporting — AlgoStream</title>
+  <meta name="description" content="Turning the analytics into something that leaves the process.">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Reporting — AlgoStream">
+  <meta property="og:description" content="Turning the analytics into something that leaves the process.">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">reporting</span>
+      </div>
+      <div class="group">
+        <span>operations</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Operations</p>
+        <h1><span class="accent">reporting</span></h1>
+        <p class="lede">Turning the analytics into something that leaves the process.</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/reporting/</span><span><span class="k">formats</span>CSV · JSON</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/reporting.md" rel="noopener">reporting.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#the-gap-this-fills">The gap this fills</a></li><li><a href="#a-real-bug-it-fixes">A real bug it fixes</a></li><li><a href="#reports">Reports</a></li><li><a href="#not-xlsx">Not xlsx</a></li><li><a href="#regulatory-reporting">"Regulatory reporting"</a></li><li><a href="#known-gaps-follow-ups">Known gaps / follow-ups</a></li><li><a href="#source-map">Source map</a></li><li><a href="#scope-and-limitations">Scope and limitations</a></li></ol>
+        </nav>
+        <article class="prose">
+          
+          <section id="the-gap-this-fills"><h2><span class="num">01</span>The gap this fills</h2><p>Everything numeric already existed. <code>Performance.Metrics</code> computes 27 risk-adjusted figures, <code>Drawdown_analysis</code> extracts episodes with recovery times, <code>Attribution</code> decomposes P&amp;L, <code>Risk_management.Var</code> prices four VaR methods.</p><p>What was missing was any way to get them <strong>out</strong>. Every one of those layers exposes a <code>to_string</code> aimed at a terminal — 48 such functions across the tree — and not one exposes rows. There was no <code>to_json</code> anywhere, and the only CSV writers were two hand-rolled <code>Printf</code> loops in <code>Backtest.Result</code>.</p></section><section id="a-real-bug-it-fixes"><h2><span class="num">02</span>A real bug it fixes</h2><p><code>Backtest.Result.write_blotter_csv</code> emitted <code>strategy_id</code> and <code>tag</code> with a bare <code>%s</code>. Both are strategy-supplied free text — <code>tag</code> exists precisely so a fill can be traced back to the reason it was placed — so a comma or a newline in either silently corrupted the file, shifting every later column by one.</p><p><code>Export.csv_escape</code> implements RFC 4180 quoting: a field containing a comma, a double quote, CR or LF is wrapped in quotes with internal quotes doubled. <code>Result</code>'s writers now use the same rule.</p><p>Non-finite floats render as an <strong>empty cell</strong>, not <code>nan</code>: a spreadsheet treats <code>nan</code> as text and it poisons the whole column's type inference.</p></section><section id="reports"><h2><span class="num">03</span>Reports</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Name</th><th>Contents</th></tr></thead><tbody><tr><td><code>performance</code></td><td>Every metric from a NAV curve, via <code>Metrics.to_assoc</code></td></tr><tr><td><code>drawdowns</code></td><td>Episodes: peak, trough, recovery, depth, duration</td></tr><tr><td><code>risk</code></td><td>Exposure, VaR/ES, limit breaches, circuit-breaker state</td></tr><tr><td><code>positions</code></td><td>Everything currently held, per instance</td></tr><tr><td><code>fills</code></td><td>Execution view: price, commission, maker/taker</td></tr><tr><td><code>audit</code></td><td>The audit trail — see below</td></tr><tr><td><code>summary</code></td><td>The runtime's flattened metrics</td></tr></tbody></table></div></div><p>Fetch any of them as CSV or JSON:</p><div class="code" data-label="bash"><pre><code>curl 'localhost:8080/api/reports/fills?format=csv'</code></pre></div></section><section id="not-xlsx"><h2><span class="num">04</span>Not xlsx</h2><p>Excel export is <strong>not implemented</strong>. A real <code>.xlsx</code> is a ZIP container of OOXML parts, which is a meaningful amount of machinery for a format Excel opens from CSV anyway. Requesting it returns a <code>400</code> that says so, rather than silently handing back CSV under a misleading name.</p></section><section id="regulatory-reporting"><h2><span class="num">05</span>"Regulatory reporting"</h2><p>A stated goal was "regulatory reporting capabilities". What ships is <code>audit</code>: a complete, timestamped record of every <strong>simulated</strong> order and fill, carrying the identifiers needed to reconcile an order end to end, plus an explicit <code>execution_mode</code> column reading <code>paper</code>.</p><p>It is <strong>not</strong> certified against MiFID II RTS 22, CAT, EMIR or any other regime, and nothing here should be filed with anyone. Calling an audit export "regulatory reporting" without that sentence would be the kind of claim this project takes care not to make.</p></section><section id="known-gaps-follow-ups"><h2><span class="num">06</span>Known gaps / follow-ups</h2><ul><li><strong>Portfolio-level performance needs a NAV curve the runtime does not retain.</strong> Each instance keeps its own bounded ring; there is no combined, durable series, so <code>performance</code> and <code>drawdowns</code> over the live runtime report on an empty curve rather than inventing data. Run them against a backtest <code>Result</code> instead.</li><li><strong>No scheduled generation.</strong> Reports are pulled; nothing writes them on a timer.</li><li><strong>No attribution endpoint.</strong> <code>Report.attribution</code> exists and works, but the daemon has no fills array in the shape <code>Attribution</code> wants without a conversion pass.</li></ul></section><section id="source-map"><h2><span class="num">07</span>Source map</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Module</th><th>Path</th></tr></thead><tbody><tr><td>CSV/JSON writers, quoting</td><td><code>lib/reporting/export.{ml,mli}</code></td></tr><tr><td>Report assembly</td><td><code>lib/reporting/report.{ml,mli}</code></td></tr><tr><td>Escaping fix in the backtest writer</td><td><code>lib/backtest/result.ml</code></td></tr><tr><td>Tests</td><td><code>test/reporting/test_export.ml</code></td></tr></tbody></table></div></div></section><section id="scope-and-limitations"><h2><span class="num">08</span>Scope and limitations</h2><p>Performance, risk and execution reports generate and export as CSV and JSON.</p><p><strong>Regulatory reporting ships as an uncertified audit trail</strong> — a defensible record of activity, not a compliance claim against any specific regime. <code>.xlsx</code> export is not implemented; CSV opens natively in Excel.</p></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="live-runtime.html"><span class="dir">← previous</span><span>Live Runtime</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="performance-tuning.html"><span class="dir">next →</span><span>Performance Tuning</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ reporting.md
+│ 8 sections · 2 tables · 1 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        operations · 8 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

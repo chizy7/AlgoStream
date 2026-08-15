@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Data Ingestion — AlgoStream</title>
+  <meta name="description" content="AlgoStream brings live market data into the event bus. This guide covers the runtime model, configuration, and how to extend the system to a new exchange.">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Data Ingestion — AlgoStream">
+  <meta property="og:description" content="AlgoStream brings live market data into the event bus. This guide covers the runtime model, configuration, and how to extend the system to a new exchange.">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">data ingestion</span>
+      </div>
+      <div class="group">
+        <span>market data</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Market Data</p>
+        <h1>data <span class="accent">ingestion</span></h1>
+        <p class="lede">AlgoStream brings live market data into the event bus. This guide covers the runtime model, configuration, and how to extend the system to a new exchange.</p>
+        <div class="guide-meta"><span><span class="k">exchanges</span>Binance · Coinbase</span><span><span class="k">library</span>lib/data_ingestion/</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/data_ingestion.md" rel="noopener">data_ingestion.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#what-s-in-the-box">What's in the box</a></li><li><a href="#concurrency-model">Concurrency model</a></li><li><a href="#lifecycle">Lifecycle</a></li><li><a href="#uri-scheme-resolution-and-a-bug-worth-knowing-about">URI scheme resolution, and a bug worth knowing about</a></li><li><a href="#connection-state-machine">Connection state machine</a></li><li><a href="#backpressure-amp-data-quality">Backpressure &amp; data quality</a></li><li><a href="#allocation-budget">Allocation budget</a></li><li><a href="#adding-a-new-exchange">Adding a new exchange</a></li><li><a href="#symbol-normalization">Symbol normalization</a></li><li><a href="#known-gaps-follow-ups">Known gaps / follow-ups</a></li><li><a href="#source-map">Source map</a></li></ol>
+        </nav>
+        <article class="prose">
+          
+          <section id="what-s-in-the-box"><h2><span class="num">01</span>What's in the box</h2><p><code>lib/data_ingestion/</code> is a single library that coordinates all market-data input. The two shipped exchanges are:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Library</th><th>Endpoint</th><th>Channels</th></tr></thead><tbody><tr><td><code>algostream.data_ingestion.binance</code></td><td><code>wss://stream.binance.com/ws</code></td><td><code>&lt;sym&gt;@bookTicker</code>, <code>&lt;sym&gt;@trade</code></td></tr><tr><td><code>algostream.data_ingestion.coinbase</code></td><td><code>wss://ws-feed.exchange.coinbase.com</code></td><td><code>ticker</code>, <code>matches</code></td></tr></tbody></table></div></div><div class="callout"><span class="q">Why the older Coinbase Exchange WS?</span><p>The newer Advanced Trade WebSocket
+(<code>advanced-trade-ws.coinbase.com</code>) requires JWT authentication even for <em>public</em> market data.
+AlgoStream uses public market data only, so this is the public Exchange WS feed.</p></div></section><section id="concurrency-model"><h2><span class="num">02</span>Concurrency model</h2><!-- Replaces the `flowchart LR` at docs/guides/data_ingestion.md:22 -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Runtime topology</span>
+    <span>2 domains</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 820 292" role="img"
+         aria-label="Three Lwt fibers in the ingestion domain publish into a four-band priority queue in the bus dispatcher domain, which feeds a dispatcher loop and then subscribers.">
+      <defs>
+        <marker id="ah-di1" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <rect class="d-group" x="8" y="26" width="286" height="250" rx="2"/>
+      <text class="d-glabel" x="20" y="18">Ingestion Domain</text>
+
+      <rect class="d-node" x="28" y="44" width="246" height="54" rx="2"/>
+      <text class="d-sub"   x="44" y="66">Lwt fiber</text>
+      <text class="d-title" x="44" y="85">Binance WS frame loop</text>
+
+      <rect class="d-node" x="28" y="112" width="246" height="54" rx="2"/>
+      <text class="d-sub"   x="44" y="134">Lwt fiber</text>
+      <text class="d-title" x="44" y="153">Coinbase WS frame loop</text>
+
+      <rect class="d-node" x="28" y="180" width="246" height="54" rx="2"/>
+      <text class="d-sub"   x="44" y="202">Lwt fiber</text>
+      <text class="d-title" x="44" y="221">1 Hz Heartbeat</text>
+
+      <rect class="d-group" x="526" y="26" width="286" height="250" rx="2"/>
+      <text class="d-glabel" x="538" y="18">Bus Dispatcher Domain</text>
+
+      <rect class="d-node-a" x="546" y="44" width="246" height="54" rx="2"/>
+      <text class="d-sub"   x="562" y="66">Priority queue</text>
+      <text class="d-title" x="562" y="85">4 lock-free RingBuffers</text>
+
+      <rect class="d-node" x="546" y="126" width="246" height="44" rx="2"/>
+      <text class="d-title" x="562" y="153">Dispatcher loop</text>
+
+      <rect class="d-node" x="546" y="198" width="246" height="44" rx="2"/>
+      <text class="d-title" x="562" y="225">Subscribers</text>
+
+      <text class="d-elabel" x="410" y="34" text-anchor="middle">try_publish · Atomic-only</text>
+      <path class="d-edge" marker-end="url(#ah-di1)" d="M274,71  C 390,71 440,71 540,71"/>
+      <path class="d-edge" marker-end="url(#ah-di1)" d="M274,139 C 390,139 440,71 540,71"/>
+      <path class="d-edge" marker-end="url(#ah-di1)" d="M274,207 C 390,207 440,71 540,71"/>
+
+      <path class="d-edge" marker-end="url(#ah-di1)" d="M669,98 L669,120"/>
+      <path class="d-edge" marker-end="url(#ah-di1)" d="M669,170 L669,192"/>
+    </svg>
+  </div>
+</div><p>A <strong>single dedicated <code>Domain.t</code></strong> hosts <code>Lwt_main.run</code>, and that's the only <code>Lwt_main.run</code> site in the project (CI greps to enforce this). All exchange connectors share that one Lwt scheduler; each connection is one Lwt fiber. The bus's dispatcher Domain runs entirely without Lwt — the only cross-Domain interaction is the lock-free <code>Event_bus.try_publish</code>.</p><p><code>Lwt_engine</code> keeps process-global state, so running <code>Lwt_main.run</code> from two Domains corrupts silently. The supervisor's <code>start</code> raises immediately on duplicate calls.</p></section><section id="lifecycle"><h2><span class="num">03</span>Lifecycle</h2><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">open Algostream_data_ingestion
+open Algostream_common_config
+
+let bus = Algostream_infrastructure_event_bus.Event_bus.create () in
+Algostream_infrastructure_event_bus.Event_bus.start bus;
+
+let entries =
+  Ingestion_supervisor.[
+    { em = (module Algostream_data_ingestion_binance.Connector);
+      config = Exchange_config.binance_default ~symbols:["BTCUSDT"; "ETHUSDT"] };
+    { em = (module Algostream_data_ingestion_coinbase.Connector);
+      config = Exchange_config.coinbase_default ~symbols:["BTC-USD"; "ETH-USD"] };
+  ]
+in
+let supervisor = Ingestion_supervisor.start ~bus ~entries () in
+
+(* ... do work, subscribe to the bus, etc. ... *)
+
+let stats = Ingestion_supervisor.stop supervisor in
+List.iter (fun s -&gt;
+  Printf.printf "[%s] gaps=%d stale=%d crossed=%d bus_drops=%Ld\n"
+    s.Ingestion_supervisor.exchange
+    s.data_quality.sequence_gaps
+    s.data_quality.stale_ticks
+    s.data_quality.crossed_books
+    s.bus_drops
+) stats</code></pre></div></section><section id="uri-scheme-resolution-and-a-bug-worth-knowing-about"><h2><span class="num">04</span>URI scheme resolution, and a bug worth knowing about</h2><p>Conduit resolves a URI by looking its <strong>scheme up as a service</strong>, through <code>getservbyname</code> and then <code>Uri_services</code>. Neither knows <code>ws</code> or <code>wss</code> — they are not in <code>/etc/services</code> — so <code>Resolver_lwt_unix.system</code> returned <code>Unknown "unknown scheme"</code> for every endpoint in <code>Exchange_config</code>, and <strong>no connector ever established a connection</strong>. The supervisor did exactly what it should: reported the failure and retried, forever. The symptom was therefore an endless reconnect loop and a feed that produced nothing but heartbeats, not a crash.</p><p><code>connector_runtime.ml</code> builds its own resolver registering the two WebSocket schemes with their well-known ports and TLS flag:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let websocket_service = function
+  | "ws"  -&gt; Lwt.return_some { Resolver.name = "ws";  port = 80;  tls = false }
+  | "wss" -&gt; Lwt.return_some { Resolver.name = "wss"; port = 443; tls = true }
+  | _     -&gt; Lwt.return_none</code></pre></div><p>An explicit port in the URI still wins, so Binance's <code>:9443</code> endpoint is unaffected — the service port is only consulted when the URI omits one.</p><p>Two things this depends on that are easy to lose:</p><ul><li><strong>A TLS backend must be linked.</strong> <code>Conduit_lwt_unix.tls_library</code> reports <code>OpenSSL</code>, <code>Native</code> (ocaml-tls) or <code>No_tls</code>; with <code>No_tls</code> every <code>wss://</code> connection fails regardless of the above.</li><li><strong>CA certificates must exist in the runtime image.</strong> This is why <code>ca-certificates</code> is installed in the release container's final stage rather than only the build stage.</li></ul><p>If a feed reports <code>observed=0</code> with a healthy-looking process, run <code>dune exec bin/ingest.exe -- --exchange coinbase --symbols BTC-USD --duration 20 --print-events</code> and read the first line: a connector that cannot resolve its endpoint says so there.</p></section><section id="connection-state-machine"><h2><span class="num">05</span>Connection state machine</h2><p>Per-connection (<code>Connection_supervisor</code>):</p><!-- Replaces the `stateDiagram-v2` at docs/guides/data_ingestion.md:86.
+     Rendered as state cards rather than a drawing: ten transitions across four
+     states is more legible as a list per state than as a graph. -->
+<div class="states">
+  <div class="state">
+    <h4>Connecting <span class="init">initial</span></h4>
+    <ul>
+      <li><span>note_connected</span><span class="to">Connected</span></li>
+      <li><span>note_failure · below threshold</span><span class="to">Reconnecting</span></li>
+      <li><span>note_failure · at threshold</span><span class="to">Open_circuit</span></li>
+    </ul>
+  </div>
+  <div class="state">
+    <h4>Connected</h4>
+    <ul>
+      <li><span>note_message · refreshes liveness</span><span class="to">Connected</span></li>
+      <li><span>note_failure · below threshold</span><span class="to">Reconnecting</span></li>
+      <li><span>note_failure · at threshold</span><span class="to">Open_circuit</span></li>
+    </ul>
+  </div>
+  <div class="state">
+    <h4>Reconnecting</h4>
+    <ul>
+      <li><span>ready_to_attempt · now ≥ next_at</span><span class="to">Connecting</span></li>
+      <li><span>failure threshold reached</span><span class="to">Open_circuit</span></li>
+    </ul>
+  </div>
+  <div class="state">
+    <h4>Open_circuit</h4>
+    <ul>
+      <li><span>circuit timer expires · now ≥ until_ns</span><span class="to">Connecting</span></li>
+    </ul>
+  </div>
+</div><ul><li><strong>Backoff</strong>: exponential 1s, 2s, 4s, 8s, 16s, 30s cap with ±25% jitter.</li><li><strong>Circuit breaker</strong>: opens after <code>circuit_breaker_threshold</code> (default 5) consecutive failures, pauses retries for <code>circuit_open_ms</code> (default 60s).</li><li><strong>Liveness</strong>: <code>read_timeout_ms</code> (default 30s) of silence forces a reconnect.</li><li><strong>Risk_alert dedup</strong>: same <code>(code, symbol)</code> pair fires at most once per 30s to avoid flap-spam.</li></ul></section><section id="backpressure-amp-data-quality"><h2><span class="num">06</span>Backpressure &amp; data quality</h2><p>Verdict types from <code>Data_quality.check_market_tick</code> / <code>check_trade_print</code>:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Verdict</th><th>What happens</th></tr></thead><tbody><tr><td><code>Ok_publish</code></td><td>tick is forwarded to <code>Event_bus.try_publish</code></td></tr><tr><td><code>Drop_stale</code></td><td>tick is dropped, High Risk_alert published</td></tr><tr><td><code>Drop_crossed</code></td><td>tick is dropped, High Risk_alert published</td></tr><tr><td><code>Out_of_order</code></td><td>trade is forwarded, but counter increments + Risk_alert</td></tr><tr><td><code>Gap_then_publish</code></td><td><strong>Critical-priority <code>Data_gap</code> event published BEFORE the tick</strong>, then the tick is forwarded</td></tr></tbody></table></div></div><p>When <code>try_publish</code> returns <code>false</code> (priority band full), the per-(exchange, symbol) drop counter increments and the message is silently lost — except for <strong>Critical-priority events</strong>, where the fall-through is a synchronous <code>Logs.err</code> plus an atomic <code>critical_drops</code> counter. The aim is for gap signals to never be lost.</p><p>A periodic 1Hz <code>Heartbeat</code> event at Low priority gives consumers a presence ping.</p><h3>What a gap counter needs to be counting</h3><p><code>Gap_then_publish</code> and the <code>dropped_to_gap</code> metric only mean something if the value handed to the detector is a <strong>per-symbol counter that advances by exactly one per message the connector actually receives</strong>. <code>check_market_tick</code> and <code>check_trade_print</code> take <code>int64 option</code>; <code>None</code> disables gap detection, which is what both tick streams pass, because neither exchange numbers its quote updates.</p><p>Both feeds got this wrong at first, and the failure was silent in the worst way — nothing errored, the metric just quietly reported nonsense:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Feed</th><th>Was passing</th><th>Effect</th></tr></thead><tbody><tr><td>Coinbase <code>match</code></td><td>the message's <code>sequence</code> field</td><td>counts the product's whole <strong>full</strong> channel (order opens, changes, cancels) while the connector subscribes only to matches, so consecutive matches are far apart</td></tr><tr><td>Binance <code>@trade</code></td><td><code>T</code>, the trade <strong>timestamp in milliseconds</strong></td><td>the "dropped" count was the elapsed time between trades — two trades half a second apart read as 499 lost messages</td></tr></tbody></table></div></div><p>Both now pass the exchange's per-symbol <strong>trade id</strong>, which is dense over exactly the messages received. Measured over an hour of Coinbase BTC-USD before the fix: <code>dropped_to_gap=2096488</code> against <code>observed=25706</code>. After, on a live 90-second capture of the same two products: <code>gaps=0 dropped_to_gap=0</code> against <code>observed=880</code>.</p><p>If you add a connector, this is the contract to check first. A sparse counter does not fail loudly; it produces a large number that looks like a serious data-quality problem and is not one.</p></section><section id="allocation-budget"><h2><span class="num">07</span>Allocation budget</h2><p>The current parser uses <code>Yojson.Safe.from_string</code>, which materializes a full AST per frame (~200-300 bytes per Binance bookTicker, ~290 bytes per Coinbase ticker). Throughput on Apple Silicon is <strong>~427k ev/s for Binance, ~349k ev/s for Coinbase</strong> — far above the 50k SLA. The <a href="https://github.com/chizy7/AlgoStream/blob/main/test/performance/ingestion_alloc.ml" rel="noopener"><code>test/performance/ingestion_alloc.ml</code></a> bench sets a 600 word/event regression ceiling; the next optimization will replace the hot path with a hand-rolled <code>Bytes.t</code> skip-to-key state machine targeting ~16 words/event (1 envelope, 1 payload variant, 1 trade_id, plus interned symbol).</p></section><section id="adding-a-new-exchange"><h2><span class="num">08</span>Adding a new exchange</h2><ol><li>Implement <code>Algostream_data_ingestion.Exchange.S</code>:<div class="code" data-label="ocaml"><pre><code data-lang="ocaml">val name : string
+val build_subscribe_message : symbols:string list -&gt; string
+val parse_frame :
+  symbol_intern:Algostream_data_ingestion.Symbol_intern.t -&gt;
+  string -&gt;
+  Algostream_infrastructure_event_bus.Event_types.Event.payload list</code></pre></div></li><li>Add a default <code>Exchange_config.&lt;name&gt;_default</code> builder in <code>lib/common/config/exchange_config.ml</code> pointing at the public WS endpoint(s).</li><li>Recognize the new exchange in <code>bin/ingest.ml</code>'s <code>resolve_entries</code>.</li><li>Add unit tests for the parser in <code>test/data_ingestion/</code>.</li></ol></section><section id="symbol-normalization"><h2><span class="num">09</span>Symbol normalization</h2><p>Each exchange uses its own symbol convention; the supervisor passes the configured strings through verbatim. Naming has not been normalized — for now, callers supply the exchange-native form:</p><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Exchange</th><th>Format</th></tr></thead><tbody><tr><td>Binance</td><td><code>BTCUSDT</code>, <code>ETHUSDT</code> (uppercase, no separator)</td></tr><tr><td>Coinbase</td><td><code>BTC-USD</code>, <code>ETH-USD</code> (uppercase, dash)</td></tr></tbody></table></div></div><p>A unified <code>(base, quote)</code> symbol type living in the domain layer is tracked under <em>Data Normalization &amp; Quality</em>.</p></section><section id="known-gaps-follow-ups"><h2><span class="num">10</span>Known gaps / follow-ups</h2><ul><li><strong>No live timestamp from Binance bookTicker</strong>: the Binance feed doesn't ship a server timestamp on BBO updates, so ingest time is used instead. Trade frames carry <code>T</code>, used for both <code>payload.timestamp_ns</code> and the sequence field.</li><li><strong>ISO-8601 timestamps from Coinbase</strong>: parsed only as ingest time today. Adding <code>ptime</code> would would recover the exchange-side microsecond precision.</li><li><strong>Hot-path JSON parser</strong>: see <em>Allocation budget</em> above. The yojson AST cost is the largest performance lever if throughput falls below target under realistic traffic.</li><li><strong>Symbol fan-out</strong>: per-band capacity is shared across symbols. v1 is comfortable up to ~16 symbols total; for higher fan-out, raise <code>capacity_per_band</code> or shard by exchange.</li><li><strong>TLS hardening</strong>: relies on the system trust store via <code>tls-lwt</code>; explicit pin/SNI per exchange host is a future improvement.</li></ul></section><section id="source-map"><h2><span class="num">11</span>Source map</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Module</th><th>Path</th></tr></thead><tbody><tr><td>Public payloads (<code>Trade_print</code>, <code>Data_gap</code>)</td><td><code>lib/infrastructure/event_bus/event_types.{ml,mli}</code></td></tr><tr><td>Top-level supervisor</td><td><code>lib/data_ingestion/ingestion_supervisor.{ml,mli}</code></td></tr><tr><td>Per-connection state machine</td><td><code>lib/data_ingestion/connection_supervisor.{ml,mli}</code></td></tr><tr><td>WebSocket loop</td><td><code>lib/data_ingestion/connector_runtime.{ml,mli}</code></td></tr><tr><td>Token bucket</td><td><code>lib/data_ingestion/rate_limiter.{ml,mli}</code></td></tr><tr><td>Quality monitors</td><td><code>lib/data_ingestion/data_quality.{ml,mli}</code></td></tr><tr><td>Symbol interner</td><td><code>lib/data_ingestion/symbol_intern.{ml,mli}</code></td></tr><tr><td>Binance</td><td><code>lib/data_ingestion/binance/{connector,parser}.ml</code></td></tr><tr><td>Coinbase</td><td><code>lib/data_ingestion/coinbase/{connector,parser}.ml</code></td></tr><tr><td>Per-exchange config</td><td><code>lib/common/config/exchange_config.{ml,mli}</code></td></tr><tr><td>CLI</td><td><code>bin/ingest.ml</code></td></tr><tr><td>Unit tests</td><td><code>test/data_ingestion/</code></td></tr><tr><td>Perf benches</td><td><code>test/performance/{ingestion_throughput,ingestion_alloc}.ml</code></td></tr></tbody></table></div></div></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="event-bus.html"><span class="dir">← previous</span><span>Event Bus</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="normalization.html"><span class="dir">next →</span><span>Normalization &amp; Quality</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">data_ingestion</span>
+│ binance     ✓  ~427k ev/s · bookTicker + trade
+│ coinbase    ✓  ~349k ev/s · ticker + matches
+│ sla         ✓  50k ev/s target
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        market data · 11 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

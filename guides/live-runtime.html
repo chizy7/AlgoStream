@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Live Runtime — AlgoStream</title>
+  <meta name="description" content="The live runtime is the piece the backtest layer deliberately left out: something that drives a Strategy.S against the live event bus. This guide covers what it does, what it does ">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Live Runtime — AlgoStream">
+  <meta property="og:description" content="The live runtime is the piece the backtest layer deliberately left out: something that drives a Strategy.S against the live event bus. This guide covers what it does, what it does ">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">live runtime</span>
+      </div>
+      <div class="group">
+        <span>operations</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span>paper only</span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Operations</p>
+        <h1>live <span class="accent">runtime</span></h1>
+        <p class="lede">The live runtime is the piece the backtest layer deliberately left out: something that drives a <code>Strategy.S</code> against the live event bus. This guide covers what it does, what it does <strong>not</strong> do, and why it reuses the backtest engine's machinery instead of growing a parallel execution path.</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/runtime/</span><span><span class="k">mode</span>paper — no venue connectivity</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/live_runtime.md" rel="noopener">live_runtime.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#paper-trading-stated-plainly">Paper trading, stated plainly</a></li><li><a href="#reuse-stance">Reuse stance</a></li><li><a href="#the-contract-that-justifies-the-design">The contract that justifies the design</a></li><li><a href="#threading">Threading</a></li><li><a href="#lifecycle">Lifecycle</a></li><li><a href="#allocation">Allocation</a></li><li><a href="#known-gaps-follow-ups">Known gaps / follow-ups</a></li><li><a href="#source-map">Source map</a></li><li><a href="#scope-and-limitations">Scope and limitations</a></li></ol>
+        </nav>
+        <article class="prose">
+          
+          <section id="paper-trading-stated-plainly"><h2><span class="num">01</span>Paper trading, stated plainly</h2><p><strong>No order ever reaches a venue.</strong> There is no order placement anywhere in this repository — no API keys, no HMAC request signing, no trading endpoint. The only bytes the ingestion layer writes to a socket are a WebSocket subscribe message, a pong, and a close.</p><p>Fills are simulated against live quotes by <code>Backtest.Fill_engine</code>. Every P&amp;L figure the dashboard shows is therefore hypothetical, and the API says so in its payload:</p><div class="code" data-label="json"><pre><code>{ "mode": "paper" }</code></pre></div><p>Connecting this to a real venue would need order submission, authentication, reconciliation and a kill switch, none of which exist. Do not treat the numbers as trading results.</p></section><section id="reuse-stance"><h2><span class="num">02</span>Reuse stance</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Need</th><th>Where it came from</th></tr></thead><tbody><tr><td>Order matching, TIF, stops, queue-position maker fills</td><td><code>Backtest.Fill_engine</code></td></tr><tr><td>Fee tiers, financing accrual</td><td><code>Backtest.Cost_model</code></td></tr><tr><td>Regime-scaled slippage, permanent impact</td><td><code>Backtest.Slippage</code></td></tr><tr><td>Market state behind the strategy's accessors</td><td><code>Backtest.Market_view</code></td></tr><tr><td>Pre-trade risk gate</td><td><code>Risk_management.Risk_limits.pre_trade_check</code></td></tr><tr><td>Cointegration, spread, hedge ratio</td><td><code>Pairs.Per_pair</code>, driven inline</td></tr><tr><td>Bars for <code>Event.Bar</code> and the cointegration retest</td><td><code>Time_series.Bar_builder</code></td></tr></tbody></table></div></div><p>Nothing in that list was written for the live runtime. It is composition, not new execution logic — and that is what makes the two drivers comparable.</p></section><section id="the-contract-that-justifies-the-design"><h2><span class="num">03</span>The contract that justifies the design</h2><p><code>lib/strategy/dune</code> says the layer <em>"deliberately depends on neither <code>algostream.backtest</code> nor <code>algostream.infrastructure.event_bus</code>: a live runner must be able to implement <code>Strategy.S</code> without linking the fill simulator."</em> <code>Action.t</code> is <strong>returned</strong> by <code>on_event</code> rather than submitted, precisely so order-id assignment, the risk gate and routing stay outside the strategy.</p><p><code>test/runtime/test_parity.ml</code> is the test that makes this real: one strategy, one record sequence, driven through <code>Runtime.Instance</code> and through <code>Backtest.Engine</code> with identical configuration. The fills, the counters and the final NAV must agree exactly.</p><p>If they ever diverge, every backtested number in the project becomes a claim about a system that does not exist. That is why the test is in the runtime suite rather than the backtest suite — it is the runtime's obligation to keep up.</p></section><section id="threading"><h2><span class="num">04</span>Threading</h2><p>An instance is driven by exactly one Domain — the supervisor's drain loop — so its internal state is ordinary mutable state with no synchronisation. Everything crossing a Domain boundary goes through an <code>Atomic.t</code>:</p><!-- Replaces the `flowchart LR` in docs/guides/live_runtime.md.
+     The processor pattern again — same shape as analytics-1, pairs-1 and time-series-1 — with the
+     API domain as the reader rather than a strategy domain. -->
+<div class="diagram">
+  <div class="diagram-head">
+    <span>Runtime topology</span>
+    <span>3 domains</span>
+  </div>
+  <div class="diagram-body">
+    <svg viewBox="0 0 900 268" role="img"
+         aria-label="The bus dispatcher domain feeds a shim subscriber into the runtime domain's drain loop, which owns the instance state — portfolio, fill engine, market view and strategy — and publishes an immutable snapshot read by the API domain.">
+      <defs>
+        <marker id="ah-lr1" viewBox="0 0 8 8" refX="7.5" refY="4"
+                markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="#FFA21A"/>
+        </marker>
+      </defs>
+
+      <rect class="d-group" x="8" y="44" width="200" height="206" rx="2"/>
+      <text class="d-glabel" x="20" y="36">Bus Dispatcher Domain</text>
+      <rect class="d-node" x="24" y="116" width="168" height="48" rx="2"/>
+      <text class="d-title" x="40" y="145">Dispatcher loop</text>
+
+      <rect class="d-group" x="328" y="44" width="270" height="206" rx="2"/>
+      <text class="d-glabel" x="340" y="36">Runtime Domain</text>
+      <rect class="d-node" x="344" y="66" width="238" height="42" rx="2"/>
+      <text class="d-title" x="360" y="92">Drain loop</text>
+      <rect class="d-node-a" x="344" y="132" width="238" height="100" rx="2"/>
+      <text class="d-sub"   x="360" y="156">Instance state</text>
+      <text class="d-title" x="360" y="175">portfolio · fill engine</text>
+      <text class="d-title" x="360" y="193">market view · cost model</text>
+      <text class="d-title" x="360" y="211">Strategy.S</text>
+      <path class="d-edge" marker-end="url(#ah-lr1)" d="M463,108 L463,126"/>
+
+      <rect class="d-group" x="698" y="44" width="194" height="206" rx="2"/>
+      <text class="d-glabel" x="710" y="36">API Domain</text>
+      <rect class="d-node" x="714" y="116" width="162" height="48" rx="2"/>
+      <text class="d-title" x="730" y="139">Supervisor</text>
+      <text class="d-sub"   x="730" y="155">.snapshot</text>
+
+      <text class="d-elabel" x="268" y="12" text-anchor="middle">shim subscriber</text>
+      <text class="d-elabel" x="268" y="24" text-anchor="middle">translate · SPSC enqueue</text>
+      <path class="d-edge" marker-end="url(#ah-lr1)" d="M192,140 C 250,140 260,88 338,88"/>
+
+      <text class="d-elabel" x="648" y="258" text-anchor="middle">Atomic.set Snapshot.instance</text>
+      <path class="d-edge" marker-end="url(#ah-lr1)" d="M582,182 C 640,182 650,140 708,140"/>
+    </svg>
+  </div>
+</div><p>The bus handler does the minimum the dispatcher can afford — translate the payload and enqueue — because <code>Event_bus</code> invokes handlers <strong>synchronously, inline, on the single dispatcher Domain</strong>. A slow subscriber adds latency to every other subscriber and eventually backs the ring up until <code>try_publish</code> starts returning <code>false</code>.</p></section><section id="lifecycle"><h2><span class="num">05</span>Lifecycle</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>State</th><th>Market data</th><th>Strategy consulted</th><th>Resting orders</th></tr></thead><tbody><tr><td><code>Running</code></td><td>processed</td><td>yes</td><td>keep filling</td></tr><tr><td><code>Paused</code></td><td>processed</td><td><strong>no</strong></td><td>keep filling</td></tr><tr><td><code>Stopped</code></td><td>ignored</td><td>no</td><td>cancelled</td></tr></tbody></table></div></div><p>Pausing does <strong>not</strong> freeze the world. The market view and fill engine keep advancing, because orders already resting at a venue keep filling whether or not you are watching — that is what a real paused strategy experiences. What stops is emission: <code>on_event</code> is not called, so no new orders appear. Resuming continues from the same state rather than restarting; the strategy's own counters never rewound.</p><p>Control calls are safe from any Domain. They set atomics the drain loop reads, and <code>Instance.snapshot</code> overlays them at read time so a pause is visible immediately — including on a feed that has gone quiet, which is exactly when you are most likely to be pausing something.</p></section><section id="allocation"><h2><span class="num">06</span>Allocation</h2><p><code>allocation</code> is advisory. It is reported, and a strategy may size against it, but the fill engine does not enforce it — a strategy that ignores its allocation will still trade. Hard enforcement belongs with the risk limits, which do reject at the gate.</p></section><section id="known-gaps-follow-ups"><h2><span class="num">07</span>Known gaps / follow-ups</h2><ul><li><strong>No venue connectivity.</strong> See above. This is the largest gap and it is deliberate.</li><li><strong><code>Replace</code> is a cancel.</strong> <code>Fill_engine</code> has no amend, so <code>Action.Replace</code> cancels and the strategy must re-submit. Stated rather than silently approximated.</li><li><strong>No risk monitor attached.</strong> <code>Context.risk</code> is <code>None</code>: <code>Risk_management.Monitor</code> is push-driven and the runtime does not yet feed it, so strategies cannot read a live risk snapshot. The pre-trade gate does run.</li><li><strong>One strategy per pair configuration.</strong> The daemon starts a single instance; the supervisor supports many, but nothing wires more than one from the CLI yet.</li><li><strong>Timers are ignored.</strong> <code>Action.Set_timer</code> and <code>Strategy.Timer_every</code> are accepted and dropped; the runtime has no scheduler.</li></ul></section><section id="source-map"><h2><span class="num">08</span>Source map</h2><div class="tbl"><div class="tbl-scroll"><table><thead><tr><th>Module</th><th>Path</th></tr></thead><tbody><tr><td>Bus payload to market record</td><td><code>lib/runtime/translate.{ml,mli}</code></td></tr><tr><td>One live strategy</td><td><code>lib/runtime/instance.{ml,mli}</code></td></tr><tr><td>Many instances, bus attachment, controls</td><td><code>lib/runtime/supervisor.{ml,mli}</code></td></tr><tr><td>Published state</td><td><code>lib/runtime/snapshot.{ml,mli}</code></td></tr><tr><td>Live-vs-backtest parity</td><td><code>test/runtime/test_parity.ml</code></td></tr><tr><td>Lifecycle and bus integration</td><td><code>test/runtime/test_supervisor.ml</code></td></tr><tr><td>Daemon</td><td><code>bin/algostream.ml</code></td></tr></tbody></table></div></div></section><section id="scope-and-limitations"><h2><span class="num">09</span>Scope and limitations</h2><p>Start/stop/pause, allocation and risk-limit configuration are served by <code>Runtime.Supervisor</code> and exposed over the API.</p><p><strong>Strategy comparison tooling remains offline</strong> — it lives in <code>lib/optimization</code> and is not wired into the live runtime.</p></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="telemetry.html"><span class="dir">← previous</span><span>Telemetry</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="reporting.html"><span class="dir">next →</span><span>Reporting</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ live_runtime.md
+│ 9 sections · 3 tables · 1 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        operations · 9 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>

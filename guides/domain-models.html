@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Domain Models — AlgoStream</title>
+  <meta name="description" content="This guide provides a comprehensive overview of AlgoStream&#x27;s core domain models, which form the foundation of the trading platform.">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta property="og:title" content="Domain Models — AlgoStream">
+  <meta property="og:description" content="This guide provides a comprehensive overview of AlgoStream&#x27;s core domain models, which form the foundation of the trading platform.">
+  <meta property="og:type" content="article">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230A0A0B'/%3E%3Cpath d='M6 22 L12 10 L18 18 L22 13 L26 22' stroke='%23FFA21A' stroke-width='2' fill='none' stroke-linecap='square'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="../assets/algostream.css">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <div class="canvas"   aria-hidden="true"></div>
+  <div class="vignette" aria-hidden="true"></div>
+  <div class="grain"    aria-hidden="true"></div>
+
+  <main class="shell">
+    <header class="statusbar">
+      <div class="group">
+        <a class="backlink" href="../"><span class="glyph" aria-hidden="true">←</span><span class="mark">ALGOSTREAM</span></a>
+        <span class="sep">/</span>
+        <a class="backlink" href="./">guides</a>
+        <span class="sep">/</span>
+        <span style="color:var(--cream)">domain models</span>
+      </div>
+      <div class="group">
+        <span>foundations</span>
+        <span class="sep">/</span>
+        <span class="live"><span class="live-dot" aria-hidden="true"></span></span>
+      </div>
+    </header>
+    <div>
+      <div class="guide-head">
+        <p class="eyebrow">Foundations</p>
+        <h1>domain <span class="accent">models</span></h1>
+        <p class="lede">This guide provides a comprehensive overview of AlgoStream's core domain models, which form the foundation of the trading platform.</p>
+        <div class="guide-meta"><span><span class="k">library</span>lib/domain/</span><span><span class="k">covers</span>orders · trades · portfolio · pairs</span><span><span class="k">source</span><a href="https://github.com/chizy7/AlgoStream/blob/main/docs/guides/domain_models.md" rel="noopener">domain_models.md ↗</a></span></div>
+      </div>
+
+      <div class="doc">
+        <nav class="toc" aria-label="On this page">
+          <p class="toc-label">On this page</p>
+          <ol><li><a href="#overview">Overview</a></li><li><a href="#market-data-models">Market Data Models</a></li><li><a href="#trading-models">Trading Models</a></li><li><a href="#portfolio-management">Portfolio Management</a></li><li><a href="#statistical-arbitrage">Statistical Arbitrage</a></li><li><a href="#common-patterns">Common Patterns</a></li><li><a href="#performance-considerations">Performance Considerations</a></li><li><a href="#testing-patterns">Testing Patterns</a></li><li><a href="#integration-points">Integration Points</a></li></ol>
+        </nav>
+        <article class="prose">
+          
+          <section id="overview"><h2><span class="num">01</span>Overview</h2><p>AlgoStream's domain models are built using OCaml's strong type system to ensure correctness and prevent runtime errors. All models support sexp serialization for data persistence and debugging.</p></section><section id="market-data-models"><h2><span class="num">02</span>Market Data Models</h2><h3>Asset (<code>lib/domain/market/asset.ml</code>)</h3><p>Represents different asset classes with proper categorization:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type asset_class =
+  | Equity of { sector: string option; market_cap: float option }
+  | Forex of { base_currency: string; quote_currency: string }
+  | Crypto of { base_currency: string; quote_currency: string }
+  | Derivatives of { underlying: string; expiry: Timestamp.t option }
+
+type asset = {
+  symbol: string;
+  asset_class: asset_class;
+  exchange: string;
+  tick_size: float;
+  lot_size: float;
+  created_at: Timestamp.t;
+}</code></pre></div><p><strong>Key Functions:</strong></p><ul><li><code>create_asset</code> - Create new asset with validation</li><li><code>is_tradeable</code> - Check if asset can be traded</li><li><code>get_tick_size</code> - Get minimum price increment</li></ul><h3>Tick (<code>lib/domain/market/tick.ml</code>)</h3><p>Real-time market data with bid/ask spreads:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type tick = {
+  symbol: string;
+  timestamp: Timestamp.t;
+  bid_price: float;
+  ask_price: float;
+  bid_size: float;
+  ask_size: float;
+  last_price: float;
+  volume: float;
+}</code></pre></div><p><strong>Key Functions:</strong></p><ul><li><code>create_tick</code> - Create market tick with validation</li><li><code>spread</code> - Calculate bid-ask spread</li><li><code>mid_price</code> - Calculate mid-market price</li><li><code>is_valid</code> - Validate tick data integrity</li></ul><h3>Order Book (<code>lib/domain/market/order_book.ml</code>)</h3><p>Level-2 order book with market depth analysis:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type price_level = {
+  price: float;
+  size: float;
+  order_count: int;
+}
+
+type order_book = {
+  symbol: string;
+  bids: price_level list;
+  asks: price_level list;
+  timestamp: Timestamp.t;
+}</code></pre></div><p><strong>Key Functions:</strong></p><ul><li><code>create_order_book</code> - Initialize empty order book</li><li><code>add_level</code> - Add price level</li><li><code>remove_level</code> - Remove price level</li><li><code>best_bid</code>/<code>best_ask</code> - Get top of book</li><li><code>market_depth</code> - Calculate depth at price levels</li></ul></section><section id="trading-models"><h2><span class="num">03</span>Trading Models</h2><h3>Order (<code>lib/domain/orders/order.ml</code>)</h3><p>Complete order lifecycle management:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type order_type =
+  | Market
+  | Limit of { limit_price: float }
+  | Stop of { stop_price: float }
+  | Stop_limit of { stop_price: float; limit_price: float }
+  | Iceberg of { display_size: float; limit_price: float }
+
+type order_status =
+  | Pending
+  | Partially_filled of { filled_quantity: float }
+  | Filled
+  | Cancelled
+  | Rejected of { reason: string }
+
+type order = {
+  id: string;
+  symbol: string;
+  side: [`Buy | `Sell];
+  order_type: order_type;
+  quantity: float;
+  status: order_status;
+  created_at: Timestamp.t;
+  updated_at: Timestamp.t;
+}</code></pre></div><p><strong>Key Functions:</strong></p><ul><li><code>create_order</code> - Create new order</li><li><code>fill_order</code> - Process order fill</li><li><code>cancel_order</code> - Cancel pending order</li><li><code>is_filled</code> - Check if order completely filled</li></ul><h3>Trade (<code>lib/domain/trades/trade.ml</code>)</h3><p>Trade execution tracking with analytics:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type execution_type = Maker | Taker | Self_trade
+
+type trade = {
+  id: string;
+  order_id: string;
+  symbol: string;
+  side: [`Buy | `Sell];
+  quantity: float;
+  price: float;
+  timestamp: Timestamp.t;
+  execution_type: execution_type;
+  commission: float;
+  commission_asset: string;
+  exchange: string;
+  strategy_id: string option;
+}</code></pre></div><p><strong>Key Functions:</strong></p><ul><li><code>create_trade</code> - Create trade record</li><li><code>gross_value</code> - Calculate gross trade value</li><li><code>net_value</code> - Calculate net value after commission</li><li><code>trade_pnl</code> - Calculate P&amp;L against reference price</li><li><code>effective_price</code> - Price including commission impact</li></ul></section><section id="portfolio-management"><h2><span class="num">04</span>Portfolio Management</h2><h3>Position (<code>lib/domain/portfolio/position.ml</code>)</h3><p>Real-time position tracking with P&amp;L:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type position = {
+  symbol: string;
+  quantity: float;
+  average_price: float;
+  last_price: float;
+  unrealized_pnl: float;
+  realized_pnl: float;
+  total_cost: float;
+  commission_paid: float;
+  opened_at: Timestamp.t;
+  updated_at: Timestamp.t;
+  strategy_id: string option;
+}</code></pre></div><p><strong>Key Functions:</strong></p><ul><li><code>create_position</code> - Initialize empty position</li><li><code>add_trade</code> - Add trade to position (handles averaging)</li><li><code>update_last_price</code> - Update unrealized P&amp;L</li><li><code>market_value</code> - Current market value</li><li><code>total_pnl</code> - Total realized + unrealized P&amp;L</li></ul><h3>Portfolio (<code>lib/domain/portfolio/portfolio.ml</code>)</h3><p>Portfolio-level management and analytics:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type portfolio = {
+  account_id: string;
+  positions: (string, Position.position) Map.Poly.t;
+  cash_balance: float;
+  initial_capital: float;
+  total_commission_paid: float;
+  created_at: Timestamp.t;
+  updated_at: Timestamp.t;
+  strategy_allocations: (string, float) Map.Poly.t;
+}</code></pre></div><p><strong>Key Functions:</strong></p><ul><li><code>create_portfolio</code> - Initialize portfolio</li><li><code>add_trade</code> - Process trade and update positions</li><li><code>net_asset_value</code> - Calculate total NAV</li><li><code>total_pnl</code> - Portfolio-level P&amp;L</li><li><code>leverage</code> - Calculate portfolio leverage</li><li><code>position_count</code> - Number of active positions</li></ul><p><strong>Risk Analytics:</strong></p><ul><li><code>Risk_metrics.calculate_risk_metrics</code> - VaR, Expected Shortfall</li><li><code>calculate_maximum_drawdown</code> - Historical drawdown analysis</li><li><code>portfolio_return</code> - Return percentage calculation</li></ul></section><section id="statistical-arbitrage"><h2><span class="num">05</span>Statistical Arbitrage</h2><h3>Pair (<code>lib/domain/pairs/pair.ml</code>)</h3><p>Trading pairs with statistical relationships:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type pair_relationship =
+  | Cointegrated of {
+      half_life: float;
+      hedge_ratio: float;
+      adf_statistic: float;
+      p_value: float
+    }
+  | Correlated of {
+      correlation: float;
+      rolling_window: int;
+      significance_level: float
+    }
+
+type pair_state =
+  | Normal
+  | Diverged of { z_score: float; entry_time: Timestamp.t }
+  | Converging of { z_score: float; entry_time: Timestamp.t }
+  | Position_open of {
+      long_symbol: string;
+      short_symbol: string;
+      entry_spread: float;
+      entry_time: Timestamp.t
+    }
+
+type trading_pair = {
+  symbol_a: string;
+  symbol_b: string;
+  relationship: pair_relationship;
+  current_state: pair_state;
+  spread_series: float list;
+  z_score_series: float list;
+  entry_threshold: float;
+  exit_threshold: float;
+  stop_loss_threshold: float;
+  lookback_window: int;
+}</code></pre></div><p><strong>Key Functions:</strong></p><ul><li><code>create_pair</code> - Initialize trading pair</li><li><code>calculate_spread</code> - Calculate hedge-ratio adjusted spread</li><li><code>calculate_z_score</code> - Normalize spread to z-score</li><li><code>update_pair_data</code> - Update with new prices</li><li><code>should_enter_trade</code> - Generate entry signals</li><li><code>get_trade_signal</code> - Get long/short recommendations</li></ul><p><strong>Statistical Analysis:</strong></p><ul><li><code>Statistics.calculate_correlation</code> - Pearson correlation</li><li><code>Statistics.calculate_adf_statistic</code> - Augmented Dickey-Fuller test</li><li><code>Statistics.estimate_half_life</code> - Mean reversion half-life</li><li><code>Statistics.johansen_test</code> - Cointegration testing</li></ul></section><section id="common-patterns"><h2><span class="num">06</span>Common Patterns</h2><h3>Data Validation</h3><p>All models include validation functions:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let validate_price price =
+  if Float.(price &lt;= 0.0) then
+    Error "Price must be positive"
+  else Ok price
+
+let validate_quantity quantity =
+  if Float.(quantity &lt;= 0.0) then
+    Error "Quantity must be positive"
+  else Ok quantity</code></pre></div><h3>Timestamp Management</h3><p>Consistent timestamp handling across all models:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">(* Custom timestamp module for high-precision timing *)
+module Timestamp = Algostream_domain_common.Timestamp
+
+let now = Timestamp.now ()
+let duration = Timestamp.diff end_time start_time</code></pre></div><h3>Immutable Updates</h3><p>Functional updates preserve data integrity:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let update_position position ~new_price =
+  { position with
+    last_price = new_price;
+    unrealized_pnl = calculate_unrealized_pnl position new_price;
+    updated_at = Timestamp.now ();
+  }</code></pre></div><h3>Error Handling</h3><p>Comprehensive error handling with Result types:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">type 'a result = ('a, string) Result.t
+
+let safe_divide ~numerator ~denominator =
+  if Float.(denominator = 0.0) then
+    Error "Division by zero"
+  else
+    Ok (numerator /. denominator)</code></pre></div></section><section id="performance-considerations"><h2><span class="num">07</span>Performance Considerations</h2><h3>Memory Efficiency</h3><ul><li>Use of OCaml's efficient data structures</li><li>Immutable updates avoid memory leaks</li><li>Map.Poly for efficient key-value lookups</li></ul><h3>Computational Efficiency</h3><ul><li>Pre-calculated derived values (spreads, P&amp;L)</li><li>Lazy evaluation for expensive calculations</li><li>Optimized mathematical operations</li></ul><h3>Type Safety</h3><ul><li>Strong typing prevents runtime errors</li><li>Exhaustive pattern matching</li><li>Compile-time validation of business logic</li></ul></section><section id="testing-patterns"><h2><span class="num">08</span>Testing Patterns</h2><p>Each domain model includes comprehensive tests:</p><div class="code" data-label="ocaml"><pre><code data-lang="ocaml">let test_position_creation () =
+  let position = Position.create_position ~symbol:"AAPL" () in
+  assert (Float.equal position.quantity 0.0);
+  assert (String.equal position.symbol "AAPL")
+
+let test_portfolio_add_trade () =
+  let portfolio = Portfolio.create_portfolio ~account_id:"TEST" ~initial_capital:100000.0 in
+  let updated = Portfolio.add_trade portfolio ~symbol:"AAPL" ~trade_quantity:100.0 ~trade_price:150.0 ~commission:1.0 () in
+  assert (Float.equal updated.cash_balance 84999.0)</code></pre></div></section><section id="integration-points"><h2><span class="num">09</span>Integration Points</h2><h3>Data Flow</h3><ol><li><strong>Market Data</strong> → Tick → OrderBook → Asset pricing</li><li><strong>Trading</strong> → Order → Trade → Position updates</li><li><strong>Portfolio</strong> → Position aggregation → Risk calculations</li><li><strong>Pairs</strong> → Statistical analysis → Signal generation</li></ol><h3>Event Sourcing</h3><p>All state changes are captured for audit and replay:</p><ul><li>Order events (created, filled, cancelled)</li><li>Trade events (executed, settled)</li><li>Position events (opened, updated, closed)</li><li>Portfolio events (rebalanced, risk limit hit)</li></ul><p>This domain model foundation provides the type-safe, performance-optimized foundation for AlgoStream's trading operations.</p><hr><p><em>For implementation details, see the source code in <code>lib/domain/</code> and tests in <code>test/domain/</code>.</em></p></section>
+          <nav class="doc-nav"><a class="btn btn-ghost pn" href="strategy-development.html"><span class="dir">← previous</span><span>Writing a Strategy</span></a><a class="btn btn-ghost pn" href="./"><span class="dir">index</span><span>All guides</span></a><a class="btn btn-ghost pn" href="event-bus.html"><span class="dir">next →</span><span>Event Bus</span></a></nav>
+        </article>
+      </div>
+    </div>
+
+    <footer class="footer">
+      <pre class="ascii-mark">┌─ <span class="dim">docs/guides</span>
+│ domain_models.md
+│ 9 sections · 0 tables · 13 code blocks
+└─</pre>
+      <div></div>
+      <div class="meta-right">
+        <a href="../"><strong>github.io</strong> / algostream</a><br>
+        foundations · 9 sections
+      </div>
+    </footer>
+  </main>
+  <script src="../assets/highlight.js"></script>
+  <script src="../assets/guide-nav.js"></script>
+</body>
+</html>
