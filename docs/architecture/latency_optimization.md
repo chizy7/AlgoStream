@@ -57,8 +57,8 @@ leaving them to be discovered:
   the p50/p99 figures; the far tail is the major collector, which is stop-the-world across every
   Domain. Reporting the maximum as order-path latency would blame the wrong component, and omitting
   it would be worse.
-- **The venue leg does not exist.** AlgoStream is paper trading — no exchange connectivity, no order
-  placement, no acknowledgement. This answers the latency target only for the part the project
+- **The venue leg does not exist yet.** There is no exchange connectivity, no order placement and
+  no acknowledgement, so this answers the latency target only for the part the project
   controls. Real execution latency is dominated by the network round trip and the venue's matching
   engine, neither of which is measurable here.
 

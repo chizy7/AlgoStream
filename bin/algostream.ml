@@ -85,7 +85,7 @@ let default_cli () =
 
 let usage () =
   print_string
-    {|algostream — live paper-trading daemon with a monitoring dashboard
+    {|algostream: live daemon with simulated execution and a monitoring dashboard
 
   Market data (pick one):
     --exchange {binance|coinbase|both}  live public feeds       (default both)
@@ -445,7 +445,7 @@ let () =
   let c = parse_args () in
     Logs.set_reporter (Logs.format_reporter ()) ;
     Logs.set_level (Some Logs.Info) ;
-    Printf.printf "algostream — paper trading, no venue connectivity\n%!" ;
+    Printf.printf "algostream: simulated execution, no venue connectivity\n%!" ;
 
     (* Both tuning knobs must be applied before anything is spawned: [Gc.set] so the Domains inherit
        the minor-heap size, and [set_plan] so each Domain can claim a core as it starts. *)

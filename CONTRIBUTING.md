@@ -134,7 +134,7 @@ lib/                     # All library code
 ├── data_ingestion/      # Exchange connectors and the ingestion supervisor
 ├── analytics/ pairs/    # Statistics and cointegration
 ├── strategy/ backtest/  # The strategy contract and the simulator
-├── runtime/             # Live paper-trading runner
+├── runtime/             # Live runner, simulated execution
 └── telemetry/           # Metrics, health, alerting
 
 bin/                     # Executables — daemon, keyctl, auditctl, backtest, benchmark

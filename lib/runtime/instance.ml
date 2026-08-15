@@ -46,8 +46,8 @@ let default_config ~strategy_id ~venue ~initial_capital =
     initial_capital;
     venue;
     slippage = Slippage.Book_walk;
-    (* Unlike the backtest's [Latency.zero], live paper trading models the venue's real round trip:
-       an order submitted now is not matchable until the outbound delay has elapsed. *)
+    (* Unlike the backtest's [Latency.zero], the live runtime models the venue's real round trip: an
+       order submitted now is not matchable until the outbound delay has elapsed. *)
     latency = Latency.of_venue venue ();
     cost = Cost_model.default_config venue;
     risk_limits = Some Risk_limits.default;

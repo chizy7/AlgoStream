@@ -135,7 +135,7 @@ containing markup therefore cannot become markup.
 System health and latency, throughput, per-band queue depth, subsystem status, the portfolio NAV
 curve, strategy control, positions, recent fills, and active alerts.
 
-The paper-trading banner sits above all of them and is the most important element on the page.
+The simulated-execution banner sits above all of them and is the most important element on the page.
 
 ## Known gaps / follow-ups
 

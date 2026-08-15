@@ -10,7 +10,7 @@ Service serves it, and a promotion and a rollback both complete without the Serv
 endpoint. Multi-node is still unproven — see below. Where a number appears — CPU, memory, timeouts —
 it is reasoned from the benchmarks rather than measured under production load.
 
-This remains paper trading throughout. There is no venue connectivity in this project.
+Execution is simulated throughout. There is no venue connectivity in this project today.
 
 ## The release container
 

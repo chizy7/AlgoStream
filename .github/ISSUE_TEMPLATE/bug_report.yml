@@ -5,9 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        AlgoStream is paper trading only — there is no venue connectivity anywhere
-        in the project. If you are reporting something about placing real orders,
-        that code does not exist here.
+        Execution in AlgoStream is simulated. There is no venue connectivity in
+        this project today, so if you are reporting something about placing real
+        orders, that code does not exist here yet.
 
         For security vulnerabilities, do **not** open an issue. Follow
         [SECURITY.md](../blob/main/SECURITY.md) instead.

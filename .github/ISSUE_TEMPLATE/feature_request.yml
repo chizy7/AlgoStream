@@ -5,8 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        AlgoStream is paper trading only — there is no venue connectivity anywhere
-        in the project. Proposals that assume live order placement are out of scope.
+        Execution in AlgoStream is simulated. There is no venue connectivity in
+        this project today, so proposals that assume live order placement are
+        out of scope for now.
 
   - type: textarea
     id: problem
