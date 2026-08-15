@@ -138,6 +138,38 @@ jobs:
         path: bench_results.json
         retention-days: 30
 
+    # github-action-benchmark fetches gh-pages to diff against the stored
+    # history, and it does that even when auto-push is false — so a missing
+    # branch fails the step on pull requests too, with
+    # "fatal: couldn't find remote ref gh-pages" and exit 128. The action does
+    # not create the branch itself. Seed it here for the same reason pages.yml
+    # does: a fresh clone or a fork otherwise cannot run benchmarks at all.
+    - name: Create gh-pages if it does not exist
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+          echo "gh-pages exists"
+          exit 0
+        fi
+        echo "gh-pages missing — creating it as an empty orphan branch"
+        seed="$(mktemp -d)"
+        git init -q -b gh-pages "$seed"
+        cd "$seed"
+        git config user.name  "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        touch .nojekyll
+        git add .nojekyll
+        git commit -q -m "site: initialise gh-pages"
+        # A pull request from a fork gets a read-only token, so this push cannot
+        # succeed there. Say so plainly instead of failing the step: the publish
+        # below is what actually needs the branch, and its own error is the one
+        # worth reading.
+        if ! git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages; then
+          echo "::warning::could not create gh-pages (read-only token, likely a fork PR)"
+        fi
+
     - name: Publish to gh-pages and check for regressions
       uses: benchmark-action/github-action-benchmark@v1
       with:

@@ -35,6 +35,35 @@ jobs:
     - name: Checkout main
       uses: actions/checkout@v7
 
+    # gh-pages has to exist before it can be checked out, and in a fresh clone
+    # of this repo it does not. The checkout below then fails with a bare
+    # "git failed with exit code 1" against a ref nobody has created yet, which
+    # reads like a permissions problem and is not one. Create it as an empty
+    # orphan branch so the first publish has somewhere to land. Anyone forking
+    # this repo hits the same wall on their first push, so this belongs in the
+    # workflow rather than being a one-time manual bootstrap.
+    - name: Create gh-pages if it does not exist
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+          echo "gh-pages exists"
+          exit 0
+        fi
+        echo "gh-pages missing — creating it as an empty orphan branch"
+        seed="$(mktemp -d)"
+        git init -q -b gh-pages "$seed"
+        cd "$seed"
+        git config user.name  "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        # .nojekyll from the outset: the published tree is plain HTML, and a
+        # Jekyll pass would drop every path beginning with an underscore.
+        touch .nojekyll
+        git add .nojekyll
+        git commit -q -m "site: initialise gh-pages"
+        git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+
     - name: Checkout gh-pages
       uses: actions/checkout@v7
       with:
