@@ -1,7 +1,7 @@
 # Use the official ocaml/opam image: ships with a current opam (2.2+) and a
 # pre-built OCaml 5.1 switch, avoiding the apt-shipped opam 2.1 which can't
 # parse some current opam-repository entries.
-FROM ocaml/opam:ubuntu-24.04-ocaml-5.1
+FROM ocaml/opam:ubuntu-24.04-ocaml-5.6
 
 USER root
 
