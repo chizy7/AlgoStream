@@ -10,7 +10,7 @@
 # is not on the critical path; correctness of the C runtime under a 5.x multicore program is.
 
 # ───────────────────────── build ─────────────────────────
-FROM ocaml/opam:debian-12-ocaml-5.3 AS build
+FROM ocaml/opam:debian-12-ocaml-5.6 AS build
 
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
